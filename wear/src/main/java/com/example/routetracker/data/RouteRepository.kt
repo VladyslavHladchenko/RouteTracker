@@ -563,6 +563,9 @@ data class RouteDeparture(
     val minutesUntilDeparture: Int,
     val delayMinutes: Int,
 ) {
+    val liveMinutesUntilDeparture: Int
+        get() = max(0, minutesUntilDeparture + delayMinutes)
+
     val clockLabel: String
         get() = departureTime.format(DISPLAY_CLOCK_FORMATTER)
 
@@ -571,6 +574,9 @@ data class RouteDeparture(
 
     val minutesLabel: String
         get() = minutesUntilDeparture.toString()
+
+    val liveMinutesLabel: String
+        get() = liveMinutesUntilDeparture.toString()
 
     val listTimeLabel: String
         get() = when (minutesUntilDeparture) {
@@ -638,11 +644,11 @@ data class DepartureSnapshot(
     }
 
     fun complicationText(): String {
-        return departures.firstOrNull()?.minutesLabel ?: "--"
+        return departures.firstOrNull()?.liveMinutesLabel ?: "--"
     }
 
     fun complicationDelayText(): String? {
-        return departures.firstOrNull()?.complicationDelayLabel
+        return null
     }
 
     fun debugSummary(): String {

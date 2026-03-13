@@ -31,6 +31,7 @@ private const val TAG = "RouteRepository"
 private const val MAX_LOG_BODY_LENGTH = 500
 private const val PREFS_NAME = "route_prefs"
 private const val PREF_DIRECTION = "selected_direction"
+private val DISPLAY_CLOCK_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 enum class RouteDirection(
     val preferenceKey: String,
@@ -77,8 +78,6 @@ class RouteRepository(private val context: Context) {
         const val MAX_RESULTS = 3
 
         private val PRAGUE_ZONE: ZoneId = ZoneId.of("Europe/Prague")
-        private val CLOCK_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
         @Volatile
         private var cachedSnapshot: DepartureSnapshot? = null
 
@@ -181,7 +180,7 @@ class RouteRepository(private val context: Context) {
     }
 
     fun formatDepartureClockTime(departure: RouteDeparture): String {
-        return departure.departureTime.format(CLOCK_FORMATTER)
+        return departure.clockLabel
     }
 
     private fun requestSurfaceRefresh() {
@@ -564,11 +563,51 @@ data class RouteDeparture(
     val minutesUntilDeparture: Int,
     val delayMinutes: Int,
 ) {
+    val clockLabel: String
+        get() = departureTime.format(DISPLAY_CLOCK_FORMATTER)
+
     val compactLabel: String
         get() = "$minutesUntilDeparture [${delayMinutes.formatDelay()}]"
 
     val minutesLabel: String
         get() = minutesUntilDeparture.toString()
+
+    val listTimeLabel: String
+        get() = when (minutesUntilDeparture) {
+            0 -> "now"
+            1 -> "1 min"
+            else -> "$minutesUntilDeparture min"
+        }
+
+    val delayBadgeLabel: String?
+        get() = delayMinutes.takeIf { it > 0 }?.let { "+$it" }
+
+    val detailStatusLabel: String
+        get() = buildString {
+            append(
+                when (minutesUntilDeparture) {
+                    0 -> "Due now"
+                    1 -> "In 1 min"
+                    else -> "In $minutesUntilDeparture min"
+                }
+            )
+            delayBadgeLabel?.let { badge ->
+                append("  Delay ")
+                append(badge)
+                append(" min")
+            }
+        }
+
+    val tileLineLabel: String
+        get() = buildString {
+            append(clockLabel)
+            append("  ")
+            append(listTimeLabel)
+            delayBadgeLabel?.let { badge ->
+                append("  ")
+                append(badge)
+            }
+        }
 
     val complicationDelayLabel: String?
         get() = delayMinutes.takeIf { it > 0 }?.formatDelay()
@@ -590,11 +629,11 @@ data class DepartureSnapshot(
     val errorMessage: String? = null,
 ) {
     fun tileLines(): List<String> {
-        val liveLines = departures.take(RouteRepository.MAX_RESULTS).map { it.compactLabel }
+        val liveLines = departures.take(RouteRepository.MAX_RESULTS).map { it.tileLineLabel }
         return if (liveLines.isNotEmpty()) {
             liveLines
         } else {
-            List(RouteRepository.MAX_RESULTS) { "-- [--]" }
+            List(RouteRepository.MAX_RESULTS) { "--:--  -- min" }
         }
     }
 

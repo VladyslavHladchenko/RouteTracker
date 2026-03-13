@@ -5,8 +5,13 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,13 +19,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
-import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
@@ -30,12 +37,14 @@ import com.example.routetracker.data.RouteDeparture
 import com.example.routetracker.data.RouteDirection
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.presentation.theme.RouteTrackerTheme
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "RouteTrackerUi"
+private val UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,35 +104,30 @@ fun WearApp(routeRepo: RouteRepository) {
     }
 
     val departures = snapshot?.departures.orEmpty()
-    val statusText = when {
-        isRefreshing && departures.isEmpty() -> "Loading live departures..."
-        departures.isEmpty() -> snapshot?.errorMessage ?: "No upcoming direct line 7 departures."
-        snapshot?.isStale == true -> "Showing cached live data"
-        else -> selectedDirection.buttonLabel
-    }
+    val statusText = snapshotStatusText(
+        snapshot = snapshot,
+        isRefreshing = isRefreshing,
+        hasDepartures = departures.isNotEmpty(),
+    )
 
     RouteTrackerTheme {
         ScalingLazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
-            state = rememberScalingLazyListState()
+            state = rememberScalingLazyListState(),
         ) {
             item {
-                ListHeader {
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                }
+                HeaderCard(
+                    direction = selectedDirection,
+                    statusText = statusText,
+                )
             }
 
-            items(RouteDirection.entries.size) { index ->
-                val direction = RouteDirection.entries[index]
-                DirectionButton(
-                    direction = direction,
-                    isSelected = direction == selectedDirection,
-                    onClick = {
+            item {
+                DirectionSelector(
+                    selectedDirection = selectedDirection,
+                    onSelectDirection = { direction ->
                         coroutineScope.launch {
                             selectDirection(direction)
                         }
@@ -133,10 +137,11 @@ fun WearApp(routeRepo: RouteRepository) {
 
             if (departures.isNotEmpty()) {
                 items(departures.size) { index ->
-                    DepartureRow(
-                        departure = departures[index],
-                        routeRepo = routeRepo,
-                    )
+                    DepartureRow(departures[index])
+                }
+            } else {
+                item {
+                    EmptyStateCard(snapshot?.errorMessage ?: "No direct departures right now.")
                 }
             }
 
@@ -148,10 +153,93 @@ fun WearApp(routeRepo: RouteRepository) {
                             loadSnapshot(forceRefresh = true, requestSurfaceRefresh = true)
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
                 ) {
                     Text(if (isRefreshing) "Refreshing..." else "Refresh")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeaderCard(
+    direction: RouteDirection,
+    statusText: String,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shape = RoundedCornerShape(24.dp),
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "Line ${RouteRepository.LINE_NAME}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = "To ${direction.tileLabel}",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = statusText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun DirectionSelector(
+    selectedDirection: RouteDirection,
+    onSelectDirection: (RouteDirection) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = RoundedCornerShape(24.dp),
+            )
+            .padding(8.dp),
+    ) {
+        Text(
+            text = "Direction",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RouteDirection.entries.forEach { direction ->
+                DirectionButton(
+                    direction = direction,
+                    isSelected = direction == selectedDirection,
+                    onClick = { onSelectDirection(direction) },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -162,10 +250,11 @@ private fun DirectionButton(
     direction: RouteDirection,
     isSelected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Button(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         colors = if (isSelected) {
             ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -178,19 +267,76 @@ private fun DirectionButton(
             )
         },
     ) {
-        Text(direction.buttonLabel)
+        Text(direction.tileLabel)
     }
 }
 
 @Composable
 private fun DepartureRow(
     departure: RouteDeparture,
-    routeRepo: RouteRepository,
 ) {
-    Text(
-        text = "${routeRepo.formatDepartureClockTime(departure)}  ${departure.compactLabel}",
-        style = MaterialTheme.typography.bodyLarge,
-    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = departure.clockLabel,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = departure.detailStatusLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun EmptyStateCard(message: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun snapshotStatusText(
+    snapshot: DepartureSnapshot?,
+    isRefreshing: Boolean,
+    hasDepartures: Boolean,
+): String {
+    if (snapshot == null || (isRefreshing && !hasDepartures)) {
+        return "Loading"
+    }
+    if (snapshot.errorMessage != null && !hasDepartures) {
+        return snapshot.errorMessage
+    }
+
+    val freshnessLabel = if (snapshot.isStale) "Cached" else "Live"
+    val updatedLabel = snapshot.fetchedAt.format(UPDATE_TIME_FORMATTER)
+    return if (isRefreshing) {
+        "$freshnessLabel | $updatedLabel | Refreshing"
+    } else {
+        "$freshnessLabel | $updatedLabel"
+    }
 }
 
 @WearPreviewDevices
@@ -200,17 +346,27 @@ fun DefaultPreview() {
     val previewSnapshot = remember { RouteRepository.previewSnapshot() }
 
     RouteTrackerTheme {
-        ScalingLazyColumn {
+        ScalingLazyColumn(
+            modifier = Modifier.background(MaterialTheme.colorScheme.background),
+        ) {
             item {
-                ListHeader {
-                    Text(previewSnapshot.direction.buttonLabel)
-                }
+                HeaderCard(
+                    direction = previewSnapshot.direction,
+                    statusText = snapshotStatusText(
+                        snapshot = previewSnapshot,
+                        isRefreshing = false,
+                        hasDepartures = previewSnapshot.departures.isNotEmpty(),
+                    ),
+                )
             }
-            items(RouteDirection.entries.size) { index ->
-                Text(RouteDirection.entries[index].buttonLabel)
+            item {
+                DirectionSelector(
+                    selectedDirection = previewSnapshot.direction,
+                    onSelectDirection = {},
+                )
             }
             items(previewSnapshot.departures.size) { index ->
-                Text(previewSnapshot.departures[index].compactLabel)
+                DepartureRow(previewSnapshot.departures[index])
             }
         }
     }

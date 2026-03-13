@@ -1,0 +1,38 @@
+# Android Studio / IntelliJ local state
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/deploymentTargetSelector.xml
+.idea/deviceManager.xml
+.idea/shelf/
+.idea/studiobot.xml
+.idea/workspace.xml
+*.iml
+
+# Local machine configuration
+local.properties
+
+# Gradle / Kotlin build state
+.gradle/
+.gradle-home/
+.kotlin/
+build/
+
+# Android build outputs
+captures/
+*.apk
+*.aab
+
+# Native build outputs
+.externalNativeBuild/
+.cxx/
+
+# Signing material
+*.jks
+*.keystore
+
+# OS files
+.DS_Store
+Thumbs.db

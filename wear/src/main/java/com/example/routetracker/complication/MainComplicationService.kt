@@ -4,52 +4,68 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.util.Log
 import androidx.wear.watchface.complications.data.ComplicationData
+import androidx.wear.watchface.complications.data.ComplicationText
 import androidx.wear.watchface.complications.data.ComplicationType
+import androidx.wear.watchface.complications.data.CountDownTimeReference
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
+import androidx.wear.watchface.complications.data.TimeDifferenceComplicationText
+import androidx.wear.watchface.complications.data.TimeDifferenceStyle
+import androidx.wear.watchface.complications.datasource.ComplicationDataTimeline
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
-import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
+import androidx.wear.watchface.complications.datasource.SuspendingTimelineComplicationDataSourceService
+import androidx.wear.watchface.complications.datasource.TimeInterval
+import androidx.wear.watchface.complications.datasource.TimelineEntry
+import com.example.routetracker.data.ComplicationDisplayState
+import com.example.routetracker.data.ComplicationTimelinePlanner
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.presentation.MainActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "RouteTrackerComp"
 
-class MainComplicationService : SuspendingComplicationDataSourceService() {
+class MainComplicationService : SuspendingTimelineComplicationDataSourceService() {
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? {
         if (type != ComplicationType.SHORT_TEXT) {
             return null
         }
-        val previewSnapshot = RouteRepository.previewSnapshot()
         return createComplicationData(
-            text = previewSnapshot.complicationText(),
-            title = previewSnapshot.complicationDelayText(),
-            contentDescription = "Next line 7 departure ${previewSnapshot.direction.buttonLabel}.",
+            state = ComplicationDisplayState(
+                departureInstant = null,
+                fallbackText = "8",
+                title = null,
+                contentDescription = "Next line 7 departure to N\u00E1dra\u017E\u00ED V\u0159\u0161ovice.",
+            ),
         )
     }
 
-    override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData {
+    override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationDataTimeline {
         val routeRepo = RouteRepository(this)
         val snapshot = withContext(Dispatchers.IO) {
             routeRepo.getDepartureSnapshot()
         }
-        val firstDeparture = snapshot.departures.firstOrNull()
+        val plan = ComplicationTimelinePlanner.create(
+            snapshot = snapshot,
+            now = Instant.now(),
+        )
         Log.d(TAG, "Complication request. ${snapshot.debugSummary()}")
-        return createComplicationData(
-            text = snapshot.complicationText(),
-            title = snapshot.complicationDelayText(),
-            contentDescription = firstDeparture?.accessibilityLabel
-                ?: snapshot.errorMessage
-                ?: "No upcoming direct line 7 departures ${snapshot.direction.buttonLabel}.",
+        return ComplicationDataTimeline(
+            defaultComplicationData = createComplicationData(plan.defaultState),
+            timelineEntries = plan.futureWindows.map { window ->
+                TimelineEntry(
+                    validity = TimeInterval(window.start, window.end),
+                    complicationData = createComplicationData(window.state),
+                )
+            },
         )
     }
 
     private fun createComplicationData(
-        text: String,
-        title: String?,
-        contentDescription: String,
+        state: ComplicationDisplayState,
     ): ComplicationData {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -59,13 +75,24 @@ class MainComplicationService : SuspendingComplicationDataSourceService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val text: ComplicationText = state.departureInstant?.let { departureInstant ->
+            TimeDifferenceComplicationText.Builder(
+                TimeDifferenceStyle.SHORT_SINGLE_UNIT,
+                CountDownTimeReference(departureInstant),
+            )
+                .setText("^1")
+                .setDisplayAsNow(false)
+                .setMinimumTimeUnit(TimeUnit.MINUTES)
+                .build()
+        } ?: PlainComplicationText.Builder(state.fallbackText).build()
+
         val builder = ShortTextComplicationData.Builder(
-            text = PlainComplicationText.Builder(text).build(),
-            contentDescription = PlainComplicationText.Builder(contentDescription).build()
+            text = text,
+            contentDescription = PlainComplicationText.Builder(state.contentDescription).build()
         )
 
-        title?.let { delayText ->
-            builder.setTitle(PlainComplicationText.Builder(delayText).build())
+        state.title?.let { title ->
+            builder.setTitle(PlainComplicationText.Builder(title).build())
         }
 
         return builder

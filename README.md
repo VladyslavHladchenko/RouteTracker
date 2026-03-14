@@ -230,26 +230,57 @@ After that merge, the repository converts the result into an internal `RouteDepa
 
 ### Complication
 
-The complication shows a single number only:
+The complication shows the next departure as a self-updating countdown:
 
-- `countdown in minutes to the resolved departure time`
+- main text:
+  - countdown to the resolved next departure time
+  - provided as a time-based complication text, so the watch face can keep counting down locally between API refreshes
+- small secondary marker:
+  - hidden when fresh
+  - tiny `•` dot when stale
 
-That value is:
+The stale marker means:
 
-- time remaining until the final departure timestamp chosen by the resolver
-- clamped to `0`
+- the complication is showing data from a snapshot older than `30 seconds`
+- or the repository already marked the snapshot stale because it had to fall back to cached/paused data
 
-Example:
+The complication timeline also preloads the next known departures, so when the current tram passes the watch face can switch to the next one without waiting for a new network fetch.
 
-- scheduled in `10` minutes with delay `+1` -> complication shows `11`
-- scheduled in `10` minutes with delay `+1`, but the board already returned `predicted = now + 11 min` -> complication still shows `11`, not `12`
+Important notes:
 
-The complication does not currently show delay as a separate badge.
+- the watch face controls final rendering, so exact placement is watch-face-dependent
+- text color is also watch-face-controlled, so the status marker is a monochrome dot rather than a guaranteed green/red dot
+- the stale threshold is exactly `30 seconds` in app logic, but the visible flip still depends on when the watch face redraws
 
-Important note:
+Examples:
 
-- Watch-face layout is controlled by the watch face, not fully by the app.
-- The app supplies data, but exact placement is watch-face-dependent.
+- resolved next departure in `11` minutes -> complication counts down to that departure locally
+- once the snapshot becomes older than `30 seconds`, a small stale dot appears
+- when the first departure time is reached, the timeline switches to the second departure if one is available
+
+### How Complication Updates Work
+
+Each time Wear OS requests complication data, the app builds a fresh `ComplicationDataTimeline` from the current snapshot.
+
+That timeline contains:
+
+- the current next departure
+- future handoff points for departure `2` and `3`
+- the future point when the stale dot should appear if no newer snapshot replaces it
+
+After the timeline is returned, the watch face can keep using that already-delivered timeline locally.
+
+That means:
+
+- the countdown can keep changing even when the app is not called again
+- the complication can switch from one departure to the next using the cached timeline
+- Wear OS may still be showing an older timeline until it asks the app for a newer one
+
+Important consequence:
+
+- complication timeline updates are not guaranteed exactly every `30 seconds`
+- `UPDATE_PERIOD_SECONDS=30` is only the app's requested cadence
+- the stale dot exists to show that the currently displayed timeline is based on data older than `30 seconds`
 
 ### Tile
 
@@ -355,8 +386,21 @@ Or:
 
 ### Complication number
 
-- `minutes until the resolved departure time`
+- `time remaining until the resolved departure time`
+- rendered by the watch face from the stored target departure timestamp
 - never adds the same delay twice
+
+Important nuance:
+
+- the activity and tile currently floor countdowns to whole minutes
+- the complication uses Wear OS `TimeDifferenceComplicationText` with minute granularity
+- that means partial minutes can round up on the watch face
+
+Example:
+
+- if the real remaining time is `13 min 05 s`
+  - activity/tile may show `13`
+  - complication may show `14M`
 
 ### Tile number
 
@@ -419,6 +463,7 @@ Note:
 - when the app is open, each aligned activity refresh also triggers best-effort tile and complication refresh requests
 - complication refresh timing is still system-controlled by Wear OS
 - `30 seconds` is a requested cadence, not a hard guarantee
+- between complication refreshes, the complication countdown can still keep moving because it is based on a target departure timestamp rather than a frozen number
 
 ### Auto updates toggle
 

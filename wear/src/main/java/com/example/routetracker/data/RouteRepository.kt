@@ -1109,14 +1109,6 @@ data class DepartureSnapshot(
         }
     }
 
-    fun complicationText(): String {
-        return departures.firstOrNull()?.countdownLabel ?: "--"
-    }
-
-    fun complicationDelayText(): String? {
-        return null
-    }
-
     fun debugSummary(): String {
         return "direction=${direction.preferenceKey} departures=${departures.map { it.compactLabel }} isStale=$isStale errorMessage=$errorMessage"
     }

@@ -630,10 +630,10 @@ data class RouteDeparture(
         get() = liveMinutesUntilDeparture.toString()
 
     val listTimeLabel: String
-        get() = when (minutesUntilDeparture) {
+        get() = when (liveMinutesUntilDeparture) {
             0 -> "now"
             1 -> "1 min"
-            else -> "$minutesUntilDeparture min"
+            else -> "$liveMinutesUntilDeparture min"
         }
 
     val delayBadgeLabel: String?
@@ -642,10 +642,10 @@ data class RouteDeparture(
     val detailStatusLabel: String
         get() = buildString {
             append(
-                when (minutesUntilDeparture) {
+                when (liveMinutesUntilDeparture) {
                     0 -> "Due now"
                     1 -> "In 1 min"
-                    else -> "In $minutesUntilDeparture min"
+                    else -> "In $liveMinutesUntilDeparture min"
                 }
             )
             delayBadgeLabel?.let { badge ->
@@ -671,7 +671,7 @@ data class RouteDeparture(
 
     val accessibilityLabel: String
         get() = buildString {
-            append("Departure in $minutesUntilDeparture minutes.")
+            append("Departure in $liveMinutesUntilDeparture minutes.")
             if (delayMinutes > 0) {
                 append(" Delay ${delayMinutes.formatDelay()} minutes.")
             }

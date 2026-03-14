@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -61,7 +62,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "RouteTrackerUi"
-private const val MAIN_SCREEN_INDEX = 4
+private const val MAIN_SCREEN_INDEX = 5
 private const val HALF_MINUTE_MILLIS = 30_000L
 private val PREVIEW_UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val ACTIVITY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -258,17 +259,6 @@ fun WearApp(routeRepo: RouteRepository) {
     )
 
     RouteTrackerTheme {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-        ) {
-            ActivityClockChip(
-                showSeconds = showSecondsEnabled,
-                modifier = Modifier
-                    .fillMaxSize(),
-            )
-
         if (isSettingsDialogOpen) {
             SettingsDialog(
                 showSecondsEnabled = showSecondsEnabled,
@@ -307,105 +297,116 @@ fun WearApp(routeRepo: RouteRepository) {
             )
         }
 
-        selectedDeparture?.let { departure ->
-            DepartureDetailsDialog(
-                departure = departure,
-                routeRepo = routeRepo,
-                onDismiss = {
-                    selectedDeparture = null
-                },
-            )
-        }
-
-        val listState = rememberScalingLazyListState(
-            initialCenterItemIndex = MAIN_SCREEN_INDEX,
-        )
-        ScalingLazyColumn(
+        Box(
             modifier = Modifier
-                .fillMaxSize(),
-            state = listState,
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
         ) {
-            item {
-                SettingsLauncherButton(
-                    onOpenSettings = {
-                        isSettingsDialogOpen = true
-                    },
-                )
-            }
-
-            item {
-                AutoUpdatesCard(
-                    autoUpdatesEnabled = autoUpdatesEnabled,
-                    onToggleAutoUpdates = {
-                        coroutineScope.launch {
-                            toggleAutoUpdates()
-                        }
-                    },
-                )
-            }
-
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {}
-            }
-
-            item {
-                HeaderCard(
-                    direction = selectedDirection,
-                    statusText = statusText,
-                )
-            }
-
-            item {
-                DirectionSelector(
-                    selectedDirection = selectedDirection,
-                    onSelectDirection = { direction ->
-                        coroutineScope.launch {
-                            selectDirection(direction)
-                        }
-                    },
-                )
-            }
-
-            if (departures.isNotEmpty()) {
-                items(departures.size) { index ->
-                    DepartureRow(
-                        departure = departures[index],
-                        routeRepo = routeRepo,
-                        onClick = {
-                            selectedDeparture = departures[index]
+            val listState = rememberScalingLazyListState(
+                initialCenterItemIndex = MAIN_SCREEN_INDEX,
+            )
+            ScalingLazyColumn(
+                modifier = Modifier
+                    .fillMaxSize(),
+                state = listState,
+            ) {
+                item {
+                    SettingsLauncherButton(
+                        onOpenSettings = {
+                            isSettingsDialogOpen = true
                         },
                     )
                 }
-            } else {
+
                 item {
-                    EmptyStateCard(snapshot?.errorMessage ?: "No direct departures right now.")
+                    AutoUpdatesCard(
+                        autoUpdatesEnabled = autoUpdatesEnabled,
+                        onToggleAutoUpdates = {
+                            coroutineScope.launch {
+                                toggleAutoUpdates()
+                            }
+                        },
+                    )
+                }
+
+                item {
+                    DirectionSelector(
+                        selectedDirection = selectedDirection,
+                        onSelectDirection = { direction ->
+                            coroutineScope.launch {
+                                selectDirection(direction)
+                            }
+                        },
+                    )
+                }
+
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                    ) {}
+                }
+
+                item {
+                    HeaderCard(
+                        direction = selectedDirection,
+                        statusText = statusText,
+                    )
+                }
+
+                if (departures.isNotEmpty()) {
+                    items(departures.size) { index ->
+                        DepartureRow(
+                            departure = departures[index],
+                            routeRepo = routeRepo,
+                            onClick = {
+                                selectedDeparture = departures[index]
+                            },
+                        )
+                    }
+                } else {
+                    item {
+                        EmptyStateCard(snapshot?.errorMessage ?: "No direct departures right now.")
+                    }
+                }
+
+                item {
+                    Button(
+                        onClick = {
+                            Log.d(TAG, "Refresh button tapped.")
+                            coroutineScope.launch {
+                                loadSnapshot(forceRefresh = true, requestSurfaceRefresh = true)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    ) {
+                        Text(if (isRefreshing) "Refreshing..." else "Refresh")
+                    }
                 }
             }
 
-            item {
-                Button(
-                    onClick = {
-                        Log.d(TAG, "Refresh button tapped.")
-                        coroutineScope.launch {
-                            loadSnapshot(forceRefresh = true, requestSurfaceRefresh = true)
-                        }
+            selectedDeparture?.let { departure ->
+                DepartureDetailsDialog(
+                    departure = departure,
+                    routeRepo = routeRepo,
+                    onDismiss = {
+                        selectedDeparture = null
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                ) {
-                    Text(if (isRefreshing) "Refreshing..." else "Refresh")
-                }
+                )
             }
-        }
+
+            ActivityClockChip(
+                showSeconds = showSecondsEnabled,
+                modifier = Modifier
+                    .fillMaxSize(),
+            )
         }
     }
 }
@@ -777,15 +778,33 @@ private fun DepartureDetailsDialog(
     routeRepo: RouteRepository,
     onDismiss: () -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    val dismissInteractionSource = remember { MutableInteractionSource() }
+    val cardInteractionSource = remember { MutableInteractionSource() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .clickable(
+                interactionSource = dismissInteractionSource,
+                indication = null,
+                onClick = onDismiss,
+            )
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp)
                 .verticalScroll(rememberScrollState())
                 .background(
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(28.dp),
+                )
+                .clickable(
+                    interactionSource = cardInteractionSource,
+                    indication = null,
+                    onClick = {},
                 )
                 .padding(horizontal = 14.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

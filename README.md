@@ -359,6 +359,7 @@ When enabled:
 - departure clock times use `HH:mm:ss`
 - the activity header `last updated` time uses `HH:mm:ss`
 - the always-visible system clock uses `HH:mm:ss` and ticks live each second
+- activity departure rows switch from floored `In X min` text to live `In X min YY s` / `In YY s` text based on the current system clock
 - tile departure clock times use `HH:mm:ss`
 
 When `Details auto-refresh` is enabled:

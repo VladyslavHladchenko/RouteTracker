@@ -18,6 +18,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.LocalDate
 import java.time.ZoneId
@@ -1065,6 +1066,30 @@ data class RouteDeparture(
             }
         }
 
+    fun activityStatusLabel(
+        referenceNow: ZonedDateTime,
+        showSeconds: Boolean,
+    ): String {
+        val baseLabel = if (showSeconds) {
+            liveCountdownLabel(referenceNow)
+        } else {
+            when (countdownMinutes) {
+                0 -> "Due now"
+                1 -> "In 1 min"
+                else -> "In $countdownMinutes min"
+            }
+        }
+
+        return buildString {
+            append(baseLabel)
+            delayBadgeLabel?.let { badge ->
+                append("  Delay ")
+                append(badge)
+                append(" min")
+            }
+        }
+    }
+
     fun tileLineLabel(showSeconds: Boolean): String {
         return buildString {
             append(formatDisplayTime(departureTime, showSeconds))
@@ -1087,6 +1112,20 @@ data class RouteDeparture(
                 append(" Delay ${delayMinutes.formatDelay()} minutes.")
             }
         }
+
+    private fun liveCountdownLabel(referenceNow: ZonedDateTime): String {
+        val remainingSeconds = max(0L, Duration.between(referenceNow, departureTime).seconds)
+        if (remainingSeconds == 0L) {
+            return "Due now"
+        }
+
+        val minutesPart = remainingSeconds / 60
+        val secondsPart = remainingSeconds % 60
+        return when {
+            minutesPart > 0L -> "In $minutesPart min ${secondsPart.toString().padStart(2, '0')} s"
+            else -> "In $secondsPart s"
+        }
+    }
 }
 
 data class DepartureBoardDetails(

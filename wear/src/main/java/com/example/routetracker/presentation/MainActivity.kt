@@ -55,6 +55,7 @@ import com.example.routetracker.data.RouteDirection
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.presentation.theme.RouteTrackerTheme
 import java.time.LocalTime
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -91,6 +92,7 @@ fun WearApp(routeRepo: RouteRepository) {
     var selectedDeparture by remember { mutableStateOf<RouteDeparture?>(null) }
     var snapshot by remember { mutableStateOf<DepartureSnapshot?>(null) }
     var isRefreshing by remember { mutableStateOf(true) }
+    var currentSystemTime by remember { mutableStateOf(ZonedDateTime.now()) }
     val coroutineScope = rememberCoroutineScope()
 
     fun refreshSettingsState() {
@@ -248,6 +250,20 @@ fun WearApp(routeRepo: RouteRepository) {
         }
     }
 
+    LaunchedEffect(showSecondsEnabled) {
+        currentSystemTime = ZonedDateTime.now()
+        if (!showSecondsEnabled) {
+            return@LaunchedEffect
+        }
+
+        while (true) {
+            val nowMillis = System.currentTimeMillis()
+            val nextTickMillis = 1_000L - (nowMillis % 1_000L)
+            delay(if (nextTickMillis == 0L) 1L else nextTickMillis)
+            currentSystemTime = ZonedDateTime.now()
+        }
+    }
+
     val departures = snapshot?.departures.orEmpty()
     val updatedLabel = snapshot?.fetchedAt?.let { routeRepo.formatStatusTime(it) }
     val statusText = snapshotStatusText(
@@ -360,6 +376,8 @@ fun WearApp(routeRepo: RouteRepository) {
                         DepartureRow(
                             departure = departures[index],
                             routeRepo = routeRepo,
+                            currentSystemTime = currentSystemTime,
+                            showSecondsEnabled = showSecondsEnabled,
                             onClick = {
                                 selectedDeparture = departures[index]
                             },
@@ -396,6 +414,8 @@ fun WearApp(routeRepo: RouteRepository) {
                 DepartureDetailsDialog(
                     departure = departure,
                     routeRepo = routeRepo,
+                    currentSystemTime = currentSystemTime,
+                    showSecondsEnabled = showSecondsEnabled,
                     onDismiss = {
                         selectedDeparture = null
                     },
@@ -746,6 +766,8 @@ private fun DirectionButton(
 private fun DepartureRow(
     departure: RouteDeparture,
     routeRepo: RouteRepository,
+    currentSystemTime: ZonedDateTime,
+    showSecondsEnabled: Boolean,
     onClick: () -> Unit,
 ) {
     Column(
@@ -765,7 +787,10 @@ private fun DepartureRow(
             color = MaterialTheme.colorScheme.primary,
         )
         Text(
-            text = departure.detailStatusLabel,
+            text = departure.activityStatusLabel(
+                referenceNow = currentSystemTime,
+                showSeconds = showSecondsEnabled,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -776,6 +801,8 @@ private fun DepartureRow(
 private fun DepartureDetailsDialog(
     departure: RouteDeparture,
     routeRepo: RouteRepository,
+    currentSystemTime: ZonedDateTime,
+    showSecondsEnabled: Boolean,
     onDismiss: () -> Unit,
 ) {
     val dismissInteractionSource = remember { MutableInteractionSource() }
@@ -817,7 +844,10 @@ private fun DepartureDetailsDialog(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = departure.detailStatusLabel,
+                text = departure.activityStatusLabel(
+                    referenceNow = currentSystemTime,
+                    showSeconds = showSecondsEnabled,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -1080,6 +1110,8 @@ fun DefaultPreview() {
                 DepartureRow(
                     departure = previewSnapshot.departures[index],
                     routeRepo = previewRepository,
+                    currentSystemTime = previewSnapshot.fetchedAt,
+                    showSecondsEnabled = false,
                     onClick = {},
                 )
             }

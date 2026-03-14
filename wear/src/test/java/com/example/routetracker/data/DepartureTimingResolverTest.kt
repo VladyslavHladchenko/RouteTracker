@@ -128,6 +128,44 @@ class DepartureTimingResolverTest {
         assertEquals(destinationArrival, routeDeparture.destinationArrivalTime)
     }
 
+    @Test
+    fun `activity status label includes live seconds when enabled`() {
+        val referenceNow = pragueTime(hour = 11, minute = 55)
+        val departureTime = ZonedDateTime.of(2026, 3, 14, 12, 2, 5, 0, pragueZone)
+
+        val routeDeparture = RouteDeparture(
+            tripId = "trip-2",
+            departureTime = departureTime,
+            countdownMinutes = 7,
+            delayMinutes = 2,
+            departureBoardDetails = DepartureBoardDetails(
+                departureTime = BoardStopTime(
+                    scheduledTime = departureTime.minusMinutes(2),
+                    predictedTime = departureTime,
+                ),
+                originArrivalTime = null,
+                delaySeconds = 120,
+            ),
+            vehiclePositionDetails = null,
+            destinationArrivalTime = departureTime.plusMinutes(12),
+        )
+
+        assertEquals(
+            "In 7 min 05 s  Delay +2 min",
+            routeDeparture.activityStatusLabel(
+                referenceNow = referenceNow,
+                showSeconds = true,
+            )
+        )
+        assertEquals(
+            "In 7 min  Delay +2 min",
+            routeDeparture.activityStatusLabel(
+                referenceNow = referenceNow,
+                showSeconds = false,
+            )
+        )
+    }
+
     private fun pragueTime(
         hour: Int,
         minute: Int,

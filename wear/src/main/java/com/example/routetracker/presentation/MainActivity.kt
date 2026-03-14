@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +45,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "RouteTrackerUi"
+private const val MAIN_SCREEN_INDEX = 3
 private val UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 class MainActivity : ComponentActivity() {
@@ -59,6 +61,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun WearApp(routeRepo: RouteRepository) {
     var selectedDirection by remember { mutableStateOf(routeRepo.getSelectedDirection()) }
+    var autoUpdatesEnabled by remember { mutableStateOf(routeRepo.getAutoUpdatesEnabled()) }
     var snapshot by remember { mutableStateOf<DepartureSnapshot?>(null) }
     var isRefreshing by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
@@ -77,6 +80,7 @@ fun WearApp(routeRepo: RouteRepository) {
             }
         }
         selectedDirection = snapshot?.direction ?: routeRepo.getSelectedDirection()
+        autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
         Log.d(TAG, "Loaded snapshot. ${snapshot?.debugSummary()}")
         isRefreshing = false
     }
@@ -89,12 +93,28 @@ fun WearApp(routeRepo: RouteRepository) {
             }
             selectedDirection = direction
         }
-        loadSnapshot(forceRefresh = true, requestSurfaceRefresh = false)
+        loadSnapshot(
+            forceRefresh = autoUpdatesEnabled,
+            requestSurfaceRefresh = false,
+        )
     }
 
-    LaunchedEffect(routeRepo) {
+    suspend fun toggleAutoUpdates() {
+        val newValue = !autoUpdatesEnabled
+        Log.d(TAG, "Auto updates toggled. enabled=$newValue")
+        withContext(Dispatchers.IO) {
+            routeRepo.setAutoUpdatesEnabled(newValue)
+        }
+        autoUpdatesEnabled = newValue
+        loadSnapshot(
+            forceRefresh = newValue,
+            requestSurfaceRefresh = newValue,
+        )
+    }
+
+    LaunchedEffect(routeRepo, autoUpdatesEnabled) {
         loadSnapshot(forceRefresh = false, requestSurfaceRefresh = false)
-        while (true) {
+        while (autoUpdatesEnabled) {
             delay(30_000L)
             snapshot = withContext(Dispatchers.IO) {
                 routeRepo.getDepartureSnapshot(forceRefresh = true)
@@ -106,17 +126,40 @@ fun WearApp(routeRepo: RouteRepository) {
     val departures = snapshot?.departures.orEmpty()
     val statusText = snapshotStatusText(
         snapshot = snapshot,
+        autoUpdatesEnabled = autoUpdatesEnabled,
         isRefreshing = isRefreshing,
         hasDepartures = departures.isNotEmpty(),
     )
 
     RouteTrackerTheme {
+        val listState = rememberScalingLazyListState(
+            initialCenterItemIndex = MAIN_SCREEN_INDEX,
+        )
         ScalingLazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
-            state = rememberScalingLazyListState(),
+            state = listState,
         ) {
+            item {
+                AutoUpdatesCard(
+                    autoUpdatesEnabled = autoUpdatesEnabled,
+                    onToggleAutoUpdates = {
+                        coroutineScope.launch {
+                            toggleAutoUpdates()
+                        }
+                    },
+                )
+            }
+
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                ) {}
+            }
+
             item {
                 HeaderCard(
                     direction = selectedDirection,
@@ -318,11 +361,65 @@ private fun EmptyStateCard(message: String) {
     }
 }
 
+@Composable
+private fun AutoUpdatesCard(
+    autoUpdatesEnabled: Boolean,
+    onToggleAutoUpdates: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shape = RoundedCornerShape(24.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = "Updates",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+        Button(
+            onClick = onToggleAutoUpdates,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            colors = if (autoUpdatesEnabled) {
+                ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            } else {
+                ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            },
+        ) {
+            Text(if (autoUpdatesEnabled) "Auto updates: On" else "Auto updates: Off")
+        }
+    }
+}
+
 private fun snapshotStatusText(
     snapshot: DepartureSnapshot?,
+    autoUpdatesEnabled: Boolean,
     isRefreshing: Boolean,
     hasDepartures: Boolean,
 ): String {
+    if (!autoUpdatesEnabled) {
+        val updatedLabel = snapshot?.fetchedAt?.format(UPDATE_TIME_FORMATTER)
+        return if (updatedLabel != null && hasDepartures) {
+            "Paused | $updatedLabel"
+        } else {
+            "Updates paused"
+        }
+    }
+
     if (snapshot == null || (isRefreshing && !hasDepartures)) {
         return "Loading"
     }
@@ -348,12 +445,29 @@ fun DefaultPreview() {
     RouteTrackerTheme {
         ScalingLazyColumn(
             modifier = Modifier.background(MaterialTheme.colorScheme.background),
+            state = rememberScalingLazyListState(
+                initialCenterItemIndex = MAIN_SCREEN_INDEX,
+            ),
         ) {
+            item {
+                AutoUpdatesCard(
+                    autoUpdatesEnabled = true,
+                    onToggleAutoUpdates = {},
+                )
+            }
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                ) {}
+            }
             item {
                 HeaderCard(
                     direction = previewSnapshot.direction,
                     statusText = snapshotStatusText(
                         snapshot = previewSnapshot,
+                        autoUpdatesEnabled = true,
                         isRefreshing = false,
                         hasDepartures = previewSnapshot.departures.isNotEmpty(),
                     ),

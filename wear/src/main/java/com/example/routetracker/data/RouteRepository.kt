@@ -31,6 +31,7 @@ private const val TAG = "RouteRepository"
 private const val MAX_LOG_BODY_LENGTH = 500
 private const val PREFS_NAME = "route_prefs"
 private const val PREF_DIRECTION = "selected_direction"
+private const val PREF_AUTO_UPDATES_ENABLED = "auto_updates_enabled"
 private val DISPLAY_CLOCK_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 enum class RouteDirection(
@@ -104,6 +105,10 @@ class RouteRepository(private val context: Context) {
         return RouteDirection.fromPreference(prefs.getString(PREF_DIRECTION, null))
     }
 
+    fun getAutoUpdatesEnabled(): Boolean {
+        return prefs.getBoolean(PREF_AUTO_UPDATES_ENABLED, true)
+    }
+
     fun setSelectedDirection(direction: RouteDirection) {
         val currentDirection = getSelectedDirection()
         if (currentDirection == direction) {
@@ -121,8 +126,30 @@ class RouteRepository(private val context: Context) {
         requestSurfaceRefresh()
     }
 
+    fun setAutoUpdatesEnabled(enabled: Boolean) {
+        val currentValue = getAutoUpdatesEnabled()
+        if (currentValue == enabled) {
+            Log.d(TAG, "Auto updates already set to $enabled")
+            return
+        }
+
+        prefs.edit {
+            putBoolean(PREF_AUTO_UPDATES_ENABLED, enabled)
+        }
+
+        Log.d(TAG, "Auto updates changed to $enabled")
+        requestSurfaceRefresh()
+    }
+
     fun getDepartureSnapshot(forceRefresh: Boolean = false): DepartureSnapshot {
         val selectedDirection = getSelectedDirection()
+        if (!forceRefresh && !getAutoUpdatesEnabled()) {
+            return pausedSnapshot(
+                direction = selectedDirection,
+                cached = cachedSnapshot,
+            )
+        }
+
         val nowElapsedRealtime = SystemClock.elapsedRealtime()
         val cached = cachedSnapshot
         if (!forceRefresh &&
@@ -135,6 +162,13 @@ class RouteRepository(private val context: Context) {
         }
 
         synchronized(RouteRepository::class.java) {
+            if (!forceRefresh && !getAutoUpdatesEnabled()) {
+                return pausedSnapshot(
+                    direction = selectedDirection,
+                    cached = cachedSnapshot,
+                )
+            }
+
             val refreshedElapsedRealtime = SystemClock.elapsedRealtime()
             val currentCached = cachedSnapshot
             if (!forceRefresh &&
@@ -201,6 +235,23 @@ class RouteRepository(private val context: Context) {
         } catch (_: Exception) {
             Log.w(TAG, "Complication refresh request failed.")
         }
+    }
+
+    private fun pausedSnapshot(
+        direction: RouteDirection,
+        cached: DepartureSnapshot?,
+    ): DepartureSnapshot {
+        val matchingCached = cached?.takeIf { it.direction == direction }
+        return matchingCached?.copy(
+            isStale = true,
+            errorMessage = "Updates paused.",
+        ) ?: DepartureSnapshot(
+            direction = direction,
+            departures = emptyList(),
+            fetchedAt = ZonedDateTime.now(PRAGUE_ZONE),
+            isStale = true,
+            errorMessage = "Updates paused.",
+        )
     }
 
     private fun fetchDepartureSnapshot(direction: RouteDirection): DepartureSnapshot {

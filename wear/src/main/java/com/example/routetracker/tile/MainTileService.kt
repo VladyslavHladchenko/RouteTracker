@@ -37,9 +37,11 @@ class MainTileService : TileService() {
     override fun onTileRequest(requestParams: RequestBuilders.TileRequest): ListenableFuture<TileBuilders.Tile> {
         return Futures.submit(
             Callable {
-                val snapshot = RouteRepository(this).getDepartureSnapshot()
+                val routeRepository = RouteRepository(this)
+                val snapshot = routeRepository.getDepartureSnapshot()
+                val showSecondsEnabled = routeRepository.getShowSecondsEnabled()
                 Log.d(TAG, "Tile request received. ${snapshot.debugSummary()}")
-                tile(requestParams, this, snapshot)
+                tile(requestParams, this, snapshot, showSecondsEnabled)
             },
             tileExecutor,
         )
@@ -63,8 +65,9 @@ private fun tile(
     requestParams: RequestBuilders.TileRequest,
     context: Context,
     snapshot: DepartureSnapshot,
+    showSecondsEnabled: Boolean,
 ): TileBuilders.Tile {
-    Log.d(TAG, "Rendering tile lines=${snapshot.tileLines()}")
+    Log.d(TAG, "Rendering tile lines=${snapshot.tileLines(showSecondsEnabled)}")
 
     return TileBuilders.Tile.Builder()
         .setResourcesVersion(RESOURCES_VERSION)
@@ -74,7 +77,7 @@ private fun tile(
                 materialScope(context, requestParams.deviceConfiguration) {
                     primaryLayout(
                         mainSlot = {
-                            stackedDepartureLines(snapshot)
+                            stackedDepartureLines(snapshot, showSecondsEnabled)
                         },
                         onClick = clickable(
                             ActionBuilders.launchAction(
@@ -88,7 +91,10 @@ private fun tile(
         .build()
 }
 
-private fun MaterialScope.stackedDepartureLines(snapshot: DepartureSnapshot): LayoutElementBuilders.LayoutElement {
+private fun MaterialScope.stackedDepartureLines(
+    snapshot: DepartureSnapshot,
+    showSecondsEnabled: Boolean,
+): LayoutElementBuilders.LayoutElement {
     return LayoutElementBuilders.Column.Builder()
         .apply {
             addContent(
@@ -97,7 +103,7 @@ private fun MaterialScope.stackedDepartureLines(snapshot: DepartureSnapshot): La
                     typography = Typography.BODY_SMALL,
                 )
             )
-            snapshot.tileLines().forEach { line ->
+            snapshot.tileLines(showSecondsEnabled).forEach { line ->
                 addContent(
                     text(
                         line.layoutString,
@@ -112,5 +118,5 @@ private fun MaterialScope.stackedDepartureLines(snapshot: DepartureSnapshot): La
 @Preview(device = WearDevices.SMALL_ROUND)
 @Preview(device = WearDevices.LARGE_ROUND)
 fun tilePreview(context: Context) = TilePreviewData(::resources) {
-    tile(it, context, RouteRepository.previewSnapshot())
+    tile(it, context, RouteRepository.previewSnapshot(), false)
 }

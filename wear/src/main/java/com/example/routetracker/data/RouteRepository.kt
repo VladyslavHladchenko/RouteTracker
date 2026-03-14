@@ -32,7 +32,15 @@ private const val MAX_LOG_BODY_LENGTH = 500
 private const val PREFS_NAME = "route_prefs"
 private const val PREF_DIRECTION = "selected_direction"
 private const val PREF_AUTO_UPDATES_ENABLED = "auto_updates_enabled"
-private val DISPLAY_CLOCK_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private const val PREF_SHOW_SECONDS = "show_seconds"
+private val DISPLAY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val DISPLAY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+
+fun formatDisplayTime(time: ZonedDateTime, showSeconds: Boolean): String {
+    return time.format(
+        if (showSeconds) DISPLAY_CLOCK_SECONDS_FORMATTER else DISPLAY_CLOCK_MINUTES_FORMATTER
+    )
+}
 
 enum class RouteDirection(
     val preferenceKey: String,
@@ -109,6 +117,10 @@ class RouteRepository(private val context: Context) {
         return prefs.getBoolean(PREF_AUTO_UPDATES_ENABLED, true)
     }
 
+    fun getShowSecondsEnabled(): Boolean {
+        return prefs.getBoolean(PREF_SHOW_SECONDS, false)
+    }
+
     fun setSelectedDirection(direction: RouteDirection) {
         val currentDirection = getSelectedDirection()
         if (currentDirection == direction) {
@@ -138,6 +150,21 @@ class RouteRepository(private val context: Context) {
         }
 
         Log.d(TAG, "Auto updates changed to $enabled")
+        requestSurfaceRefresh()
+    }
+
+    fun setShowSecondsEnabled(enabled: Boolean) {
+        val currentValue = getShowSecondsEnabled()
+        if (currentValue == enabled) {
+            Log.d(TAG, "Show seconds already set to $enabled")
+            return
+        }
+
+        prefs.edit {
+            putBoolean(PREF_SHOW_SECONDS, enabled)
+        }
+
+        Log.d(TAG, "Show seconds changed to $enabled")
         requestSurfaceRefresh()
     }
 
@@ -214,7 +241,11 @@ class RouteRepository(private val context: Context) {
     }
 
     fun formatDepartureClockTime(departure: RouteDeparture): String {
-        return departure.clockLabel
+        return formatDisplayTime(departure.departureTime, getShowSecondsEnabled())
+    }
+
+    fun formatStatusTime(timestamp: ZonedDateTime): String {
+        return formatDisplayTime(timestamp, getShowSecondsEnabled())
     }
 
     private fun requestSurfaceRefresh() {
@@ -617,9 +648,6 @@ data class RouteDeparture(
     val liveMinutesUntilDeparture: Int
         get() = max(0, minutesUntilDeparture + delayMinutes)
 
-    val clockLabel: String
-        get() = departureTime.format(DISPLAY_CLOCK_FORMATTER)
-
     val compactLabel: String
         get() = "$minutesUntilDeparture [${delayMinutes.formatDelay()}]"
 
@@ -655,9 +683,9 @@ data class RouteDeparture(
             }
         }
 
-    val tileLineLabel: String
-        get() = buildString {
-            append(clockLabel)
+    fun tileLineLabel(showSeconds: Boolean): String {
+        return buildString {
+            append(formatDisplayTime(departureTime, showSeconds))
             append("  ")
             append(listTimeLabel)
             delayBadgeLabel?.let { badge ->
@@ -665,6 +693,7 @@ data class RouteDeparture(
                 append(badge)
             }
         }
+    }
 
     val complicationDelayLabel: String?
         get() = delayMinutes.takeIf { it > 0 }?.formatDelay()
@@ -685,12 +714,12 @@ data class DepartureSnapshot(
     val isStale: Boolean = false,
     val errorMessage: String? = null,
 ) {
-    fun tileLines(): List<String> {
-        val liveLines = departures.take(RouteRepository.MAX_RESULTS).map { it.tileLineLabel }
+    fun tileLines(showSeconds: Boolean = false): List<String> {
+        val liveLines = departures.take(RouteRepository.MAX_RESULTS).map { it.tileLineLabel(showSeconds) }
         return if (liveLines.isNotEmpty()) {
             liveLines
         } else {
-            List(RouteRepository.MAX_RESULTS) { "--:--  -- min" }
+            List(RouteRepository.MAX_RESULTS) { if (showSeconds) "--:--:--  -- min" else "--:--  -- min" }
         }
     }
 

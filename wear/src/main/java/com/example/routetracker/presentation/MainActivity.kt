@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,15 +21,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
@@ -37,6 +42,7 @@ import com.example.routetracker.data.DepartureSnapshot
 import com.example.routetracker.data.RouteDeparture
 import com.example.routetracker.data.RouteDirection
 import com.example.routetracker.data.RouteRepository
+import com.example.routetracker.data.formatDisplayTime
 import com.example.routetracker.presentation.theme.RouteTrackerTheme
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
@@ -45,9 +51,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "RouteTrackerUi"
-private const val MAIN_SCREEN_INDEX = 3
+private const val MAIN_SCREEN_INDEX = 4
 private const val HALF_MINUTE_MILLIS = 30_000L
-private val UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val PREVIEW_UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,6 +69,8 @@ class MainActivity : ComponentActivity() {
 fun WearApp(routeRepo: RouteRepository) {
     var selectedDirection by remember { mutableStateOf(routeRepo.getSelectedDirection()) }
     var autoUpdatesEnabled by remember { mutableStateOf(routeRepo.getAutoUpdatesEnabled()) }
+    var showSecondsEnabled by remember { mutableStateOf(routeRepo.getShowSecondsEnabled()) }
+    var isSettingsDialogOpen by remember { mutableStateOf(false) }
     var snapshot by remember { mutableStateOf<DepartureSnapshot?>(null) }
     var isRefreshing by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
@@ -82,6 +90,7 @@ fun WearApp(routeRepo: RouteRepository) {
         }
         selectedDirection = snapshot?.direction ?: routeRepo.getSelectedDirection()
         autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
+        showSecondsEnabled = routeRepo.getShowSecondsEnabled()
         Log.d(TAG, "Loaded snapshot. ${snapshot?.debugSummary()}")
         isRefreshing = false
     }
@@ -113,6 +122,16 @@ fun WearApp(routeRepo: RouteRepository) {
         )
     }
 
+    suspend fun toggleShowSeconds() {
+        val newValue = !showSecondsEnabled
+        Log.d(TAG, "Show seconds toggled. enabled=$newValue")
+        withContext(Dispatchers.IO) {
+            routeRepo.setShowSecondsEnabled(newValue)
+        }
+        showSecondsEnabled = newValue
+        loadSnapshot(forceRefresh = false, requestSurfaceRefresh = false)
+    }
+
     LaunchedEffect(routeRepo, autoUpdatesEnabled) {
         loadSnapshot(forceRefresh = false, requestSurfaceRefresh = false)
         while (autoUpdatesEnabled) {
@@ -135,14 +154,30 @@ fun WearApp(routeRepo: RouteRepository) {
     }
 
     val departures = snapshot?.departures.orEmpty()
+    val updatedLabel = snapshot?.fetchedAt?.let { routeRepo.formatStatusTime(it) }
     val statusText = snapshotStatusText(
         snapshot = snapshot,
         autoUpdatesEnabled = autoUpdatesEnabled,
         isRefreshing = isRefreshing,
         hasDepartures = departures.isNotEmpty(),
+        updatedLabel = updatedLabel,
     )
 
     RouteTrackerTheme {
+        if (isSettingsDialogOpen) {
+            SettingsDialog(
+                showSecondsEnabled = showSecondsEnabled,
+                onToggleShowSeconds = {
+                    coroutineScope.launch {
+                        toggleShowSeconds()
+                    }
+                },
+                onDismiss = {
+                    isSettingsDialogOpen = false
+                },
+            )
+        }
+
         val listState = rememberScalingLazyListState(
             initialCenterItemIndex = MAIN_SCREEN_INDEX,
         )
@@ -152,6 +187,14 @@ fun WearApp(routeRepo: RouteRepository) {
                 .background(MaterialTheme.colorScheme.background),
             state = listState,
         ) {
+            item {
+                SettingsLauncherButton(
+                    onOpenSettings = {
+                        isSettingsDialogOpen = true
+                    },
+                )
+            }
+
             item {
                 AutoUpdatesCard(
                     autoUpdatesEnabled = autoUpdatesEnabled,
@@ -191,7 +234,10 @@ fun WearApp(routeRepo: RouteRepository) {
 
             if (departures.isNotEmpty()) {
                 items(departures.size) { index ->
-                    DepartureRow(departures[index])
+                    DepartureRow(
+                        departure = departures[index],
+                        routeRepo = routeRepo,
+                    )
                 }
             } else {
                 item {
@@ -228,6 +274,100 @@ private fun millisUntilNextHalfMinute(nowMillis: Long = System.currentTimeMillis
         HALF_MINUTE_MILLIS
     } else {
         HALF_MINUTE_MILLIS - remainder
+    }
+}
+
+@Composable
+private fun SettingsLauncherButton(
+    onOpenSettings: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Button(
+            onClick = onOpenSettings,
+            modifier = Modifier.size(52.dp),
+            colors = ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ),
+        ) {
+            Icon(
+                painter = painterResource(id = android.R.drawable.ic_menu_manage),
+                contentDescription = "Open settings",
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsDialog(
+    showSecondsEnabled: Boolean,
+    onToggleShowSeconds: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = RoundedCornerShape(28.dp),
+                )
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "Display",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                textAlign = TextAlign.Center,
+            )
+            Button(
+                onClick = onToggleShowSeconds,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                colors = if (showSecondsEnabled) {
+                    ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                } else {
+                    ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    )
+                },
+            ) {
+                Text(if (showSecondsEnabled) "Show seconds: On" else "Show seconds: Off")
+            }
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            ) {
+                Text("Close")
+            }
+        }
     }
 }
 
@@ -337,6 +477,7 @@ private fun DirectionButton(
 @Composable
 private fun DepartureRow(
     departure: RouteDeparture,
+    routeRepo: RouteRepository,
 ) {
     Column(
         modifier = Modifier
@@ -349,7 +490,7 @@ private fun DepartureRow(
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Text(
-            text = departure.clockLabel,
+            text = routeRepo.formatDepartureClockTime(departure),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -430,9 +571,9 @@ private fun snapshotStatusText(
     autoUpdatesEnabled: Boolean,
     isRefreshing: Boolean,
     hasDepartures: Boolean,
+    updatedLabel: String?,
 ): String {
     if (!autoUpdatesEnabled) {
-        val updatedLabel = snapshot?.fetchedAt?.format(UPDATE_TIME_FORMATTER)
         return if (updatedLabel != null && hasDepartures) {
             "Paused | $updatedLabel"
         } else {
@@ -448,7 +589,6 @@ private fun snapshotStatusText(
     }
 
     val freshnessLabel = if (snapshot.isStale) "Cached" else "Live"
-    val updatedLabel = snapshot.fetchedAt.format(UPDATE_TIME_FORMATTER)
     return if (isRefreshing) {
         "$freshnessLabel | $updatedLabel | Refreshing"
     } else {
@@ -460,7 +600,9 @@ private fun snapshotStatusText(
 @WearPreviewFontScales
 @Composable
 fun DefaultPreview() {
+    val previewContext = LocalContext.current
     val previewSnapshot = remember { RouteRepository.previewSnapshot() }
+    val previewRepository = remember { RouteRepository(previewContext) }
 
     RouteTrackerTheme {
         ScalingLazyColumn(
@@ -469,6 +611,11 @@ fun DefaultPreview() {
                 initialCenterItemIndex = MAIN_SCREEN_INDEX,
             ),
         ) {
+            item {
+                SettingsLauncherButton(
+                    onOpenSettings = {},
+                )
+            }
             item {
                 AutoUpdatesCard(
                     autoUpdatesEnabled = true,
@@ -490,6 +637,7 @@ fun DefaultPreview() {
                         autoUpdatesEnabled = true,
                         isRefreshing = false,
                         hasDepartures = previewSnapshot.departures.isNotEmpty(),
+                        updatedLabel = previewSnapshot.fetchedAt.format(PREVIEW_UPDATE_TIME_FORMATTER),
                     ),
                 )
             }
@@ -500,7 +648,10 @@ fun DefaultPreview() {
                 )
             }
             items(previewSnapshot.departures.size) { index ->
-                DepartureRow(previewSnapshot.departures[index])
+                DepartureRow(
+                    departure = previewSnapshot.departures[index],
+                    routeRepo = previewRepository,
+                )
             }
         }
     }

@@ -14,6 +14,7 @@ The project currently focuses on the `wear` module. The `mobile` module exists i
   - the full-screen app `activity`
 - Lets the user switch direction on-watch
 - Supports pausing and resuming automatic data updates
+- Supports a `Show seconds` display setting
 
 ## Terminology
 
@@ -119,6 +120,18 @@ It shows:
 - a manual refresh button
 
 The `Auto updates` control is placed above the main view in the scrollable list, so it should be reachable by swiping down from the initial activity position.
+
+At the very top there is also a small `Settings` icon button.
+
+Tapping it opens a settings dialog with:
+
+- `Show seconds: On/Off`
+
+When enabled:
+
+- departure clock times use `HH:mm:ss`
+- the activity header `last updated` time uses `HH:mm:ss`
+- tile departure clock times use `HH:mm:ss`
 
 Each departure card shows:
 

@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "RouteTrackerUi"
 private const val MAIN_SCREEN_INDEX = 3
+private const val HALF_MINUTE_MILLIS = 30_000L
 private val UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 class MainActivity : ComponentActivity() {
@@ -115,11 +116,21 @@ fun WearApp(routeRepo: RouteRepository) {
     LaunchedEffect(routeRepo, autoUpdatesEnabled) {
         loadSnapshot(forceRefresh = false, requestSurfaceRefresh = false)
         while (autoUpdatesEnabled) {
-            delay(30_000L)
+            val delayMillis = millisUntilNextHalfMinute()
+            Log.d(TAG, "Waiting ${delayMillis}ms for next aligned refresh boundary.")
+            delay(delayMillis)
+            if (!autoUpdatesEnabled) {
+                break
+            }
+
+            isRefreshing = true
             snapshot = withContext(Dispatchers.IO) {
-                routeRepo.getDepartureSnapshot(forceRefresh = true)
+                routeRepo.refreshDepartureSnapshot()
             }
             selectedDirection = snapshot?.direction ?: routeRepo.getSelectedDirection()
+            autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
+            Log.d(TAG, "Aligned refresh finished. ${snapshot?.debugSummary()}")
+            isRefreshing = false
         }
     }
 
@@ -208,6 +219,15 @@ fun WearApp(routeRepo: RouteRepository) {
                 }
             }
         }
+    }
+}
+
+private fun millisUntilNextHalfMinute(nowMillis: Long = System.currentTimeMillis()): Long {
+    val remainder = nowMillis % HALF_MINUTE_MILLIS
+    return if (remainder == 0L) {
+        HALF_MINUTE_MILLIS
+    } else {
+        HALF_MINUTE_MILLIS - remainder
     }
 }
 

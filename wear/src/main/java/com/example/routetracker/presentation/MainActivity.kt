@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -44,7 +45,6 @@ import com.example.routetracker.data.DepartureSnapshot
 import com.example.routetracker.data.RouteDeparture
 import com.example.routetracker.data.RouteDirection
 import com.example.routetracker.data.RouteRepository
-import com.example.routetracker.data.formatDisplayTime
 import com.example.routetracker.presentation.theme.RouteTrackerTheme
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
@@ -72,10 +72,12 @@ fun WearApp(routeRepo: RouteRepository) {
     var selectedDirection by remember { mutableStateOf(routeRepo.getSelectedDirection()) }
     var autoUpdatesEnabled by remember { mutableStateOf(routeRepo.getAutoUpdatesEnabled()) }
     var showSecondsEnabled by remember { mutableStateOf(routeRepo.getShowSecondsEnabled()) }
+    var detailsDialogAutoRefreshEnabled by remember { mutableStateOf(routeRepo.getDetailsDialogAutoRefreshEnabled()) }
     var liveSnapshotCacheLabel by remember { mutableStateOf(routeRepo.getLiveSnapshotCacheLabel()) }
     var gtfsTripDetailCacheLabel by remember { mutableStateOf(routeRepo.getGtfsTripDetailCacheLabel()) }
     var vehiclePositionCacheLabel by remember { mutableStateOf(routeRepo.getVehiclePositionCacheLabel()) }
     var isSettingsDialogOpen by remember { mutableStateOf(false) }
+    var selectedDeparture by remember { mutableStateOf<RouteDeparture?>(null) }
     var snapshot by remember { mutableStateOf<DepartureSnapshot?>(null) }
     var isRefreshing by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
@@ -83,9 +85,19 @@ fun WearApp(routeRepo: RouteRepository) {
     fun refreshSettingsState() {
         autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
         showSecondsEnabled = routeRepo.getShowSecondsEnabled()
+        detailsDialogAutoRefreshEnabled = routeRepo.getDetailsDialogAutoRefreshEnabled()
         liveSnapshotCacheLabel = routeRepo.getLiveSnapshotCacheLabel()
         gtfsTripDetailCacheLabel = routeRepo.getGtfsTripDetailCacheLabel()
         vehiclePositionCacheLabel = routeRepo.getVehiclePositionCacheLabel()
+    }
+
+    fun applySnapshotState(newSnapshot: DepartureSnapshot?) {
+        snapshot = newSnapshot
+        selectedDirection = newSnapshot?.direction ?: routeRepo.getSelectedDirection()
+        selectedDeparture = selectedDeparture?.let { current ->
+            newSnapshot?.departures?.firstOrNull { it.tripId == current.tripId } ?: current
+        }
+        refreshSettingsState()
     }
 
     suspend fun loadSnapshot(forceRefresh: Boolean, requestSurfaceRefresh: Boolean) {
@@ -101,8 +113,7 @@ fun WearApp(routeRepo: RouteRepository) {
                 routeRepo.getDepartureSnapshot(forceRefresh = forceRefresh)
             }
         }
-        selectedDirection = snapshot?.direction ?: routeRepo.getSelectedDirection()
-        refreshSettingsState()
+        applySnapshotState(snapshot)
         Log.d(TAG, "Loaded snapshot. ${snapshot?.debugSummary()}")
         isRefreshing = false
     }
@@ -144,6 +155,15 @@ fun WearApp(routeRepo: RouteRepository) {
         loadSnapshot(forceRefresh = false, requestSurfaceRefresh = false)
     }
 
+    suspend fun toggleDetailsDialogAutoRefresh() {
+        val newValue = !detailsDialogAutoRefreshEnabled
+        Log.d(TAG, "Details dialog auto-refresh toggled. enabled=$newValue")
+        withContext(Dispatchers.IO) {
+            routeRepo.setDetailsDialogAutoRefreshEnabled(newValue)
+        }
+        refreshSettingsState()
+    }
+
     suspend fun cycleLiveSnapshotCache() {
         Log.d(TAG, "Cycling live snapshot cache.")
         withContext(Dispatchers.IO) {
@@ -182,10 +202,38 @@ fun WearApp(routeRepo: RouteRepository) {
             snapshot = withContext(Dispatchers.IO) {
                 routeRepo.refreshDepartureSnapshot()
             }
-            selectedDirection = snapshot?.direction ?: routeRepo.getSelectedDirection()
-            autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
+            applySnapshotState(snapshot)
             Log.d(TAG, "Aligned refresh finished. ${snapshot?.debugSummary()}")
             isRefreshing = false
+        }
+    }
+
+    LaunchedEffect(routeRepo, selectedDeparture?.tripId, detailsDialogAutoRefreshEnabled, autoUpdatesEnabled) {
+        val trackedTripId = selectedDeparture?.tripId ?: return@LaunchedEffect
+        if (!detailsDialogAutoRefreshEnabled || !autoUpdatesEnabled) {
+            return@LaunchedEffect
+        }
+
+        while (
+            selectedDeparture?.tripId == trackedTripId &&
+            detailsDialogAutoRefreshEnabled &&
+            autoUpdatesEnabled
+        ) {
+            delay(RouteRepository.DETAILS_DIALOG_REFRESH_INTERVAL_MILLIS)
+            if (
+                selectedDeparture?.tripId != trackedTripId ||
+                !detailsDialogAutoRefreshEnabled ||
+                !autoUpdatesEnabled
+            ) {
+                break
+            }
+
+            Log.d(TAG, "Refreshing open details dialog for tripId=$trackedTripId")
+            val refreshedSnapshot = withContext(Dispatchers.IO) {
+                routeRepo.getDepartureSnapshot(forceRefresh = true)
+            }
+            applySnapshotState(refreshedSnapshot)
+            Log.d(TAG, "Details dialog refresh finished. ${refreshedSnapshot.debugSummary()}")
         }
     }
 
@@ -203,12 +251,18 @@ fun WearApp(routeRepo: RouteRepository) {
         if (isSettingsDialogOpen) {
             SettingsDialog(
                 showSecondsEnabled = showSecondsEnabled,
+                detailsDialogAutoRefreshEnabled = detailsDialogAutoRefreshEnabled,
                 liveSnapshotCacheLabel = liveSnapshotCacheLabel,
                 gtfsTripDetailCacheLabel = gtfsTripDetailCacheLabel,
                 vehiclePositionCacheLabel = vehiclePositionCacheLabel,
                 onToggleShowSeconds = {
                     coroutineScope.launch {
                         toggleShowSeconds()
+                    }
+                },
+                onToggleDetailsDialogAutoRefresh = {
+                    coroutineScope.launch {
+                        toggleDetailsDialogAutoRefresh()
                     }
                 },
                 onCycleLiveSnapshotCache = {
@@ -228,6 +282,16 @@ fun WearApp(routeRepo: RouteRepository) {
                 },
                 onDismiss = {
                     isSettingsDialogOpen = false
+                },
+            )
+        }
+
+        selectedDeparture?.let { departure ->
+            DepartureDetailsDialog(
+                departure = departure,
+                routeRepo = routeRepo,
+                onDismiss = {
+                    selectedDeparture = null
                 },
             )
         }
@@ -291,6 +355,9 @@ fun WearApp(routeRepo: RouteRepository) {
                     DepartureRow(
                         departure = departures[index],
                         routeRepo = routeRepo,
+                        onClick = {
+                            selectedDeparture = departures[index]
+                        },
                     )
                 }
             } else {
@@ -360,10 +427,12 @@ private fun SettingsLauncherButton(
 @Composable
 private fun SettingsDialog(
     showSecondsEnabled: Boolean,
+    detailsDialogAutoRefreshEnabled: Boolean,
     liveSnapshotCacheLabel: String,
     gtfsTripDetailCacheLabel: String,
     vehiclePositionCacheLabel: String,
     onToggleShowSeconds: () -> Unit,
+    onToggleDetailsDialogAutoRefresh: () -> Unit,
     onCycleLiveSnapshotCache: () -> Unit,
     onCycleGtfsTripDetailCache: () -> Unit,
     onCycleVehiclePositionCache: () -> Unit,
@@ -415,6 +484,31 @@ private fun SettingsDialog(
                 },
             ) {
                 Text(if (showSecondsEnabled) "Show seconds: On" else "Show seconds: Off")
+            }
+            Button(
+                onClick = onToggleDetailsDialogAutoRefresh,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = if (detailsDialogAutoRefreshEnabled) {
+                    ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                } else {
+                    ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    )
+                },
+            ) {
+                Text(
+                    if (detailsDialogAutoRefreshEnabled) {
+                        "Details auto-refresh: On (10 s)"
+                    } else {
+                        "Details auto-refresh: Off"
+                    }
+                )
             }
             Text(
                 text = "Cache",
@@ -584,6 +678,7 @@ private fun DirectionButton(
 private fun DepartureRow(
     departure: RouteDeparture,
     routeRepo: RouteRepository,
+    onClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -593,6 +688,7 @@ private fun DepartureRow(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shape = RoundedCornerShape(22.dp),
             )
+            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Text(
@@ -604,6 +700,147 @@ private fun DepartureRow(
             text = departure.detailStatusLabel,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun DepartureDetailsDialog(
+    departure: RouteDeparture,
+    routeRepo: RouteRepository,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .verticalScroll(rememberScrollState())
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = RoundedCornerShape(28.dp),
+                )
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = routeRepo.formatDepartureClockTime(departure),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = departure.detailStatusLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                textAlign = TextAlign.Center,
+            )
+            DetailValueRow(
+                label = "Destination arrival",
+                value = routeRepo.formatDetailTime(departure.destinationArrivalTime),
+            )
+            DetailSectionTitle(
+                title = "Departure board",
+                topPadding = 12.dp,
+            )
+            DetailValueRow(
+                label = "Departure scheduled",
+                value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.scheduledTime),
+            )
+            DetailValueRow(
+                label = "Departure predicted",
+                value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.predictedTime),
+            )
+            DetailValueRow(
+                label = "Delay",
+                value = routeRepo.formatDelaySeconds(departure.departureBoardDetails.delaySeconds),
+            )
+            DetailValueRow(
+                label = "Origin arrival scheduled",
+                value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.scheduledTime),
+            )
+            DetailValueRow(
+                label = "Origin arrival predicted",
+                value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.predictedTime),
+            )
+            DetailSectionTitle(
+                title = "Vehicle positions",
+                topPadding = 12.dp,
+            )
+            departure.vehiclePositionDetails?.let { vehicleDetails ->
+                DetailValueRow(
+                    label = "Delay",
+                    value = routeRepo.formatDelaySeconds(vehicleDetails.delaySeconds),
+                )
+                DetailValueRow(
+                    label = "origin_timestamp",
+                    value = routeRepo.formatDetailTime(vehicleDetails.originTimestamp),
+                )
+            } ?: DetailValueRow(
+                label = "Status",
+                value = "Not available",
+            )
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            ) {
+                Text("Close")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailSectionTitle(
+    title: String,
+    topPadding: androidx.compose.ui.unit.Dp,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = topPadding),
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun DetailValueRow(
+    label: String,
+    value: String,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(18.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = 2.dp),
         )
     }
 }
@@ -757,6 +994,7 @@ fun DefaultPreview() {
                 DepartureRow(
                     departure = previewSnapshot.departures[index],
                     routeRepo = previewRepository,
+                    onClick = {},
                 )
             }
         }

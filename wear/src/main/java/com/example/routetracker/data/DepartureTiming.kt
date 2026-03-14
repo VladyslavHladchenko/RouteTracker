@@ -34,12 +34,18 @@ data class ResolvedDepartureTiming(
     fun toRouteDeparture(
         tripId: String,
         referenceNow: ZonedDateTime,
+        departureBoardDetails: DepartureBoardDetails,
+        vehiclePositionDetails: VehiclePositionDetails?,
+        destinationArrivalTime: ZonedDateTime?,
     ): RouteDeparture {
         return RouteDeparture(
             tripId = tripId,
             departureTime = departureTime,
             countdownMinutes = countdownMinutes(referenceNow),
             delayMinutes = delayMinutes,
+            departureBoardDetails = departureBoardDetails,
+            vehiclePositionDetails = vehiclePositionDetails,
+            destinationArrivalTime = destinationArrivalTime,
         )
     }
 }

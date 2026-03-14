@@ -18,6 +18,7 @@ import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -31,11 +32,14 @@ private const val PREFS_NAME = "route_prefs"
 private const val PREF_DIRECTION = "selected_direction"
 private const val PREF_AUTO_UPDATES_ENABLED = "auto_updates_enabled"
 private const val PREF_SHOW_SECONDS = "show_seconds"
+private const val PREF_DETAILS_DIALOG_AUTO_REFRESH_ENABLED = "details_dialog_auto_refresh_enabled"
 private const val PREF_LIVE_SNAPSHOT_CACHE_MILLIS = "live_snapshot_cache_millis"
 private const val PREF_GTFS_TRIP_DETAIL_CACHE_MILLIS = "gtfs_trip_detail_cache_millis"
 private const val PREF_VEHICLE_POSITION_CACHE_MILLIS = "vehicle_position_cache_millis"
 private val DISPLAY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DISPLAY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+private val DETAIL_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM HH:mm")
+private val DETAIL_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM HH:mm:ss")
 
 private data class CacheDurationOption(
     val millis: Long,
@@ -100,6 +104,7 @@ class RouteRepository(private val context: Context) {
         private const val DEFAULT_LIVE_SNAPSHOT_CACHE_MILLIS = 2_000L
         private const val DEFAULT_GTFS_TRIP_DETAIL_CACHE_MILLIS = 60_000L
         private const val DEFAULT_VEHICLE_POSITION_CACHE_MILLIS = 2_000L
+        const val DETAILS_DIALOG_REFRESH_INTERVAL_MILLIS = 10_000L
 
         const val LINE_NAME = "7"
         const val MAX_RESULTS = 3
@@ -138,11 +143,63 @@ class RouteRepository(private val context: Context) {
             return DepartureSnapshot(
                 direction = direction,
                 departures = listOf(
-                    RouteDeparture("preview-1", now.plusMinutes(3), 3, 1),
-                    RouteDeparture("preview-2", now.plusMinutes(11), 11, 0),
-                    RouteDeparture("preview-3", now.plusMinutes(19), 19, -1),
+                    previewDeparture(
+                        tripId = "preview-1",
+                        scheduledTime = now.plusMinutes(2),
+                        predictedTime = now.plusMinutes(3),
+                        countdownMinutes = 3,
+                        delayMinutes = 1,
+                    ),
+                    previewDeparture(
+                        tripId = "preview-2",
+                        scheduledTime = now.plusMinutes(11),
+                        predictedTime = now.plusMinutes(11),
+                        countdownMinutes = 11,
+                        delayMinutes = 0,
+                    ),
+                    previewDeparture(
+                        tripId = "preview-3",
+                        scheduledTime = now.plusMinutes(20),
+                        predictedTime = now.plusMinutes(19),
+                        countdownMinutes = 19,
+                        delayMinutes = -1,
+                    ),
                 ),
                 fetchedAt = now,
+            )
+        }
+
+        private fun previewDeparture(
+            tripId: String,
+            scheduledTime: ZonedDateTime,
+            predictedTime: ZonedDateTime?,
+            countdownMinutes: Int,
+            delayMinutes: Int,
+        ): RouteDeparture {
+            val boardDelaySeconds = delayMinutes * 60
+            val resolvedDepartureTime = predictedTime ?: scheduledTime
+            val originArrivalTime = BoardStopTime(
+                scheduledTime = scheduledTime.minusMinutes(1),
+                predictedTime = predictedTime?.minusMinutes(1),
+            )
+            return RouteDeparture(
+                tripId = tripId,
+                departureTime = resolvedDepartureTime,
+                countdownMinutes = countdownMinutes,
+                delayMinutes = delayMinutes,
+                departureBoardDetails = DepartureBoardDetails(
+                    departureTime = BoardStopTime(
+                        scheduledTime = scheduledTime,
+                        predictedTime = predictedTime,
+                    ),
+                    originArrivalTime = originArrivalTime,
+                    delaySeconds = boardDelaySeconds,
+                ),
+                vehiclePositionDetails = VehiclePositionDetails(
+                    delaySeconds = boardDelaySeconds,
+                    originTimestamp = resolvedDepartureTime.minusSeconds(20),
+                ),
+                destinationArrivalTime = resolvedDepartureTime.plusMinutes(12),
             )
         }
     }
@@ -157,6 +214,10 @@ class RouteRepository(private val context: Context) {
 
     fun getShowSecondsEnabled(): Boolean {
         return prefs.getBoolean(PREF_SHOW_SECONDS, false)
+    }
+
+    fun getDetailsDialogAutoRefreshEnabled(): Boolean {
+        return prefs.getBoolean(PREF_DETAILS_DIALOG_AUTO_REFRESH_ENABLED, true)
     }
 
     fun getLiveSnapshotCacheMillis(): Long {
@@ -228,6 +289,20 @@ class RouteRepository(private val context: Context) {
 
         Log.d(TAG, "Show seconds changed to $enabled")
         requestSurfaceRefresh()
+    }
+
+    fun setDetailsDialogAutoRefreshEnabled(enabled: Boolean) {
+        val currentValue = getDetailsDialogAutoRefreshEnabled()
+        if (currentValue == enabled) {
+            Log.d(TAG, "Details dialog auto-refresh already set to $enabled")
+            return
+        }
+
+        prefs.edit {
+            putBoolean(PREF_DETAILS_DIALOG_AUTO_REFRESH_ENABLED, enabled)
+        }
+
+        Log.d(TAG, "Details dialog auto-refresh changed to $enabled")
     }
 
     fun cycleLiveSnapshotCacheMillis(): Long {
@@ -353,6 +428,36 @@ class RouteRepository(private val context: Context) {
         return formatDisplayTime(timestamp, getShowSecondsEnabled())
     }
 
+    fun formatDetailTime(timestamp: ZonedDateTime?): String {
+        timestamp ?: return "—"
+        val formatter = when {
+            timestamp.toLocalDate() == LocalDate.now(PRAGUE_ZONE) -> {
+                if (getShowSecondsEnabled()) DISPLAY_CLOCK_SECONDS_FORMATTER else DISPLAY_CLOCK_MINUTES_FORMATTER
+            }
+
+            getShowSecondsEnabled() -> DETAIL_CLOCK_SECONDS_FORMATTER
+            else -> DETAIL_CLOCK_MINUTES_FORMATTER
+        }
+        return timestamp.format(formatter)
+    }
+
+    fun formatDelaySeconds(seconds: Int?): String {
+        seconds ?: return "—"
+        val sign = when {
+            seconds > 0 -> "+"
+            seconds < 0 -> "-"
+            else -> ""
+        }
+        val absoluteSeconds = kotlin.math.abs(seconds)
+        return when {
+            absoluteSeconds >= 60 && absoluteSeconds % 60 == 0 -> {
+                "$sign${absoluteSeconds / 60} min"
+            }
+
+            else -> "$sign${absoluteSeconds} s"
+        }
+    }
+
     private fun cacheDurationLabel(durationMillis: Long): String {
         (LIVE_SNAPSHOT_CACHE_OPTIONS + GTFS_TRIP_DETAIL_CACHE_OPTIONS + VEHICLE_POSITION_CACHE_OPTIONS)
             .firstOrNull { it.millis == durationMillis }
@@ -463,6 +568,7 @@ class RouteRepository(private val context: Context) {
                 skippedMissingTime += 1
                 continue
             }
+            val boardArrivalTime = parseBoardStopTime(departure, "arrival_timestamp")
             val tripId = trip?.optString("id").orEmpty()
             if (tripId.isBlank()) {
                 skippedMissingTripId += 1
@@ -484,7 +590,8 @@ class RouteRepository(private val context: Context) {
                 skippedMissingBoardingIndex += 1
                 continue
             }
-            if (!reachesDestination(stopTimes, boardingIndex, direction.destinationStopId)) {
+            val destinationStopTime = findDestinationStopTime(stopTimes, boardingIndex, direction.destinationStopId)
+            if (destinationStopTime == null) {
                 skippedMissingDestination += 1
                 continue
             }
@@ -492,12 +599,14 @@ class RouteRepository(private val context: Context) {
             var canceled = optionalBoolean(trip, "is_canceled")
             val boardDelaySeconds = extractBoardDelaySeconds(departure)
             var vehicleDelaySeconds: Int? = null
+            var vehicleOriginTimestamp: ZonedDateTime? = null
 
             fetchVehiclePosition(tripId)?.let { vehiclePosition: JSONObject ->
                 val lastPosition = vehiclePosition
                     .optJSONObject("properties")
                     ?.optJSONObject("last_position")
                 vehicleDelaySeconds = optionalInt(lastPosition?.optJSONObject("delay"), "actual")
+                vehicleOriginTimestamp = parseOptionalOffsetTimestamp(lastPosition?.optString("origin_timestamp"))
                 optionalBoolean(lastPosition, "is_canceled")?.let { canceled = it }
             }
 
@@ -511,9 +620,28 @@ class RouteRepository(private val context: Context) {
                 boardDelaySeconds = boardDelaySeconds,
                 vehicleDelaySeconds = vehicleDelaySeconds,
             )
+            val destinationArrivalTime = resolveArrivalTime(
+                destinationStopTime = destinationStopTime,
+                serviceDayAnchor = boardStopTime.scheduledTime,
+                delaySeconds = resolvedTiming.delaySeconds,
+            )
             val matchedDeparture = resolvedTiming.toRouteDeparture(
                 tripId = tripId,
                 referenceNow = referenceNow,
+                departureBoardDetails = DepartureBoardDetails(
+                    departureTime = boardStopTime,
+                    originArrivalTime = boardArrivalTime,
+                    delaySeconds = boardDelaySeconds,
+                ),
+                vehiclePositionDetails = if (vehicleDelaySeconds != null || vehicleOriginTimestamp != null) {
+                    VehiclePositionDetails(
+                        delaySeconds = vehicleDelaySeconds,
+                        originTimestamp = vehicleOriginTimestamp,
+                    )
+                } else {
+                    null
+                },
+                destinationArrivalTime = destinationArrivalTime,
             )
             matches += matchedDeparture
             Log.d(
@@ -775,6 +903,13 @@ class RouteRepository(private val context: Context) {
         )
     }
 
+    private fun parseOptionalOffsetTimestamp(value: String?): ZonedDateTime? {
+        if (value.isNullOrBlank()) {
+            return null
+        }
+        return OffsetDateTime.parse(value).atZoneSameInstant(PRAGUE_ZONE)
+    }
+
     private fun extractBoardDelaySeconds(entry: JSONObject): Int? {
         optionalInt(entry.optJSONObject("delay"), "seconds")?.let { return it }
 
@@ -819,14 +954,32 @@ class RouteRepository(private val context: Context) {
         return fallbackIndex
     }
 
-    private fun reachesDestination(stopTimes: JSONArray, boardingIndex: Int, destinationStopId: String): Boolean {
+    private fun findDestinationStopTime(
+        stopTimes: JSONArray,
+        boardingIndex: Int,
+        destinationStopId: String,
+    ): JSONObject? {
         for (index in boardingIndex + 1 until stopTimes.length()) {
             val stopTime = stopTimes.optJSONObject(index) ?: continue
             if (stopTime.optString("stop_id") == destinationStopId) {
-                return true
+                return stopTime
             }
         }
-        return false
+        return null
+    }
+
+    private fun resolveArrivalTime(
+        destinationStopTime: JSONObject,
+        serviceDayAnchor: ZonedDateTime,
+        delaySeconds: Int,
+    ): ZonedDateTime? {
+        val arrivalServiceTime = destinationStopTime.optString("arrival_time")
+            .ifBlank { destinationStopTime.optString("departure_time") }
+        if (arrivalServiceTime.isBlank()) {
+            return null
+        }
+        return combineServiceTime(serviceDayAnchor, arrivalServiceTime)
+            .plusSeconds(delaySeconds.toLong())
     }
 
     private fun combineServiceTime(anchor: ZonedDateTime, hhmmss: String): ZonedDateTime {
@@ -869,6 +1022,9 @@ data class RouteDeparture(
     val departureTime: ZonedDateTime,
     val countdownMinutes: Int,
     val delayMinutes: Int,
+    val departureBoardDetails: DepartureBoardDetails,
+    val vehiclePositionDetails: VehiclePositionDetails?,
+    val destinationArrivalTime: ZonedDateTime?,
 ) {
     val compactLabel: String
         get() = "$countdownMinutes [${delayMinutes.formatDelay()}]"
@@ -925,6 +1081,17 @@ data class RouteDeparture(
             }
         }
 }
+
+data class DepartureBoardDetails(
+    val departureTime: BoardStopTime,
+    val originArrivalTime: BoardStopTime?,
+    val delaySeconds: Int?,
+)
+
+data class VehiclePositionDetails(
+    val delaySeconds: Int?,
+    val originTimestamp: ZonedDateTime?,
+)
 
 data class DepartureSnapshot(
     val direction: RouteDirection,

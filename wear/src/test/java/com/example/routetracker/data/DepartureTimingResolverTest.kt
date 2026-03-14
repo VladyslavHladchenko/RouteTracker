@@ -84,6 +84,9 @@ class DepartureTimingResolverTest {
         val referenceNow = pragueTime(hour = 11, minute = 55)
         val scheduled = pragueTime(hour = 12, minute = 0)
         val predicted = scheduled.plusMinutes(2)
+        val originArrivalScheduled = scheduled.minusMinutes(1)
+        val originArrivalPredicted = predicted.minusMinutes(1)
+        val destinationArrival = scheduled.plusMinutes(17)
 
         val routeDeparture = DepartureTimingResolver.resolve(
             DepartureRealtimeInputs(
@@ -95,12 +98,34 @@ class DepartureTimingResolverTest {
         ).toRouteDeparture(
             tripId = "trip-1",
             referenceNow = referenceNow,
+            departureBoardDetails = DepartureBoardDetails(
+                departureTime = BoardStopTime(
+                    scheduledTime = scheduled,
+                    predictedTime = predicted,
+                ),
+                originArrivalTime = BoardStopTime(
+                    scheduledTime = originArrivalScheduled,
+                    predictedTime = originArrivalPredicted,
+                ),
+                delaySeconds = 120,
+            ),
+            vehiclePositionDetails = VehiclePositionDetails(
+                delaySeconds = null,
+                originTimestamp = null,
+            ),
+            destinationArrivalTime = destinationArrival,
         )
 
         assertEquals(7, routeDeparture.countdownMinutes)
         assertEquals("+2", routeDeparture.delayBadgeLabel)
         assertEquals("In 7 min  Delay +2 min", routeDeparture.detailStatusLabel)
         assertEquals("7", routeDeparture.countdownLabel)
+        assertEquals(120, routeDeparture.departureBoardDetails.delaySeconds)
+        assertEquals(scheduled, routeDeparture.departureBoardDetails.departureTime.scheduledTime)
+        assertEquals(predicted, routeDeparture.departureBoardDetails.departureTime.predictedTime)
+        assertEquals(originArrivalScheduled, routeDeparture.departureBoardDetails.originArrivalTime?.scheduledTime)
+        assertEquals(originArrivalPredicted, routeDeparture.departureBoardDetails.originArrivalTime?.predictedTime)
+        assertEquals(destinationArrival, routeDeparture.destinationArrivalTime)
     }
 
     private fun pragueTime(

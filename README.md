@@ -15,6 +15,7 @@ The project currently focuses on the `wear` module. The `mobile` module exists i
 - Lets the user switch direction on-watch
 - Supports pausing and resuming automatic data updates
 - Supports a `Show seconds` display setting
+- Supports a `Details auto-refresh` setting for the open departure dialog
 
 ## Terminology
 
@@ -78,6 +79,10 @@ The app uses `departures[]`. Each departure item is a JSON object with these rel
   - `predicted: string` in ISO datetime format
   - `scheduled: string` in ISO datetime format
   - `minutes: string`
+- `arrival_timestamp`
+  - `predicted: string` in ISO datetime format
+  - `scheduled: string` in ISO datetime format
+  - `minutes: string`
 - `delay`
   - `seconds: number|null`
   - `minutes: number|null`
@@ -89,6 +94,7 @@ How the app uses it:
 - reads `stop.id` and keeps only the currently selected source stop
 - reads `trip.id` as the stable ID for follow-up GTFS and vehicle queries
 - reads both `departure_timestamp.scheduled` and `departure_timestamp.predicted`
+- reads `arrival_timestamp.scheduled` and `arrival_timestamp.predicted` as the vehicle's board arrival to the origin stop when available
 - treats `predicted` as the board-provided stop-specific expected departure time when vehicle-position delay is not available
 - reads `delay.seconds` as the board-level delay fallback
 - reads `trip.is_canceled` as the initial cancellation flag
@@ -132,6 +138,7 @@ How the app uses it:
 - searches only downstream `stop_times[]` entries after boarding
 - checks whether the selected destination `stop_id` appears later in the same trip
 - reads the destination `arrival_time` to know when the direct ride should arrive
+- combines the destination `arrival_time` with the resolved realtime delay to show an activity-level arrival timestamp
 
 Data returned but not used by the app:
 
@@ -193,6 +200,18 @@ After that merge, the repository converts the result into an internal `RouteDepa
 - `departureTime: ZonedDateTime`
 - `countdownMinutes: int`
 - `delayMinutes: int`
+- `destinationArrivalTime: ZonedDateTime?`
+- `departureBoardDetails`
+  - `departureTime`
+    - `scheduledTime: ZonedDateTime`
+    - `predictedTime: ZonedDateTime|null`
+  - `originArrivalTime`
+    - `scheduledTime: ZonedDateTime`
+    - `predictedTime: ZonedDateTime|null`
+  - `delaySeconds: Int?`
+- `vehiclePositionDetails`
+  - `delaySeconds: Int?`
+  - `originTimestamp: ZonedDateTime?`
 
 ### High-Level Route-Finding Flow
 
@@ -268,6 +287,22 @@ It shows:
 - the next departures as cards
 - a manual refresh button
 
+Tapping a departure card opens a details dialog.
+
+That dialog shows the captured API detail fields for the selected item:
+
+- `departureboards`
+  - `departure_timestamp.scheduled`
+  - `departure_timestamp.predicted`
+  - `delay`
+  - `arrival_timestamp.scheduled`
+  - `arrival_timestamp.predicted`
+- `trip detail`
+  - `destination arrival`
+- `vehiclepositions`
+  - `delay`
+  - `origin_timestamp`
+
 The `Auto updates` control is placed above the main view in the scrollable list, so it should be reachable by swiping down from the initial activity position.
 
 At the very top there is also a small `Settings` icon button.
@@ -275,6 +310,7 @@ At the very top there is also a small `Settings` icon button.
 Tapping it opens a settings dialog with:
 
 - `Show seconds: On/Off`
+- `Details auto-refresh: On/Off`
 - `Live snapshot` cache duration
 - `Trip detail` cache duration
 - `Vehicle live` cache duration
@@ -284,6 +320,12 @@ When enabled:
 - departure clock times use `HH:mm:ss`
 - the activity header `last updated` time uses `HH:mm:ss`
 - tile departure clock times use `HH:mm:ss`
+
+When `Details auto-refresh` is enabled:
+
+- an open departure details dialog refreshes every `10 seconds`
+- the dialog reuses the latest matching `tripId` from the refreshed snapshot when available
+- this only runs while the global `Auto updates` switch is on
 
 Current default cache settings are:
 
@@ -366,6 +408,7 @@ These cache durations are configurable from the settings dialog under `Cache`.
 Current refresh configuration:
 
 - activity auto-refresh: aligned to wall-clock `:00` and `:30` seconds while the app is open
+- details dialog auto-refresh: every `10 seconds` while the dialog is open and the setting is enabled
 - tile freshness interval: `30 seconds`
 - complication requested update period: `30 seconds`
 

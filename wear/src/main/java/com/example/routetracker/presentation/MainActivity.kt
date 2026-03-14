@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
@@ -30,10 +31,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.wear.compose.foundation.CurvedLayout
+import androidx.wear.compose.foundation.CurvedModifier
+import androidx.wear.compose.foundation.CurvedTextStyle
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.foundation.basicCurvedText
+import androidx.wear.compose.foundation.padding
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Icon
@@ -46,6 +53,7 @@ import com.example.routetracker.data.RouteDeparture
 import com.example.routetracker.data.RouteDirection
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.presentation.theme.RouteTrackerTheme
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -56,6 +64,8 @@ private const val TAG = "RouteTrackerUi"
 private const val MAIN_SCREEN_INDEX = 4
 private const val HALF_MINUTE_MILLIS = 30_000L
 private val PREVIEW_UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val ACTIVITY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val ACTIVITY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -248,6 +258,17 @@ fun WearApp(routeRepo: RouteRepository) {
     )
 
     RouteTrackerTheme {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            ActivityClockChip(
+                showSeconds = showSecondsEnabled,
+                modifier = Modifier
+                    .fillMaxSize(),
+            )
+
         if (isSettingsDialogOpen) {
             SettingsDialog(
                 showSecondsEnabled = showSecondsEnabled,
@@ -301,8 +322,7 @@ fun WearApp(routeRepo: RouteRepository) {
         )
         ScalingLazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .fillMaxSize(),
             state = listState,
         ) {
             item {
@@ -386,6 +406,7 @@ fun WearApp(routeRepo: RouteRepository) {
                 }
             }
         }
+        }
     }
 }
 
@@ -421,6 +442,43 @@ private fun SettingsLauncherButton(
                 contentDescription = "Open settings",
             )
         }
+    }
+}
+
+@Composable
+private fun ActivityClockChip(
+    showSeconds: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var clockText by remember { mutableStateOf(formatActivityClock(LocalTime.now(), showSeconds)) }
+
+    LaunchedEffect(showSeconds) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            val nextTickMillis = if (showSeconds) {
+                1_000L - (now % 1_000L)
+            } else {
+                60_000L - (now % 60_000L)
+            }
+            delay(if (nextTickMillis == 0L) 1L else nextTickMillis)
+            clockText = formatActivityClock(LocalTime.now(), showSeconds)
+        }
+    }
+
+    CurvedLayout(
+        modifier = modifier,
+        anchor = 180f,
+    ) {
+        basicCurvedText(
+            text = clockText,
+            modifier = CurvedModifier.padding(8.dp),
+            style = {
+                CurvedTextStyle(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp,
+                )
+            },
+        )
     }
 }
 
@@ -569,6 +627,15 @@ private fun SettingsDialog(
             }
         }
     }
+}
+
+private fun formatActivityClock(
+    time: LocalTime,
+    showSeconds: Boolean,
+): String {
+    return time.format(
+        if (showSeconds) ACTIVITY_CLOCK_SECONDS_FORMATTER else ACTIVITY_CLOCK_MINUTES_FORMATTER
+    )
 }
 
 @Composable

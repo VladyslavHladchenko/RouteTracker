@@ -279,6 +279,7 @@ The activity opens on the main departures view.
 
 It shows:
 
+- an always-visible system clock overlay in the activity gutter
 - a header card with:
   - line number
   - selected destination
@@ -319,6 +320,7 @@ When enabled:
 
 - departure clock times use `HH:mm:ss`
 - the activity header `last updated` time uses `HH:mm:ss`
+- the always-visible system clock uses `HH:mm:ss` and ticks live each second
 - tile departure clock times use `HH:mm:ss`
 
 When `Details auto-refresh` is enabled:

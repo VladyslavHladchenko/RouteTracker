@@ -275,12 +275,21 @@ At the very top there is also a small `Settings` icon button.
 Tapping it opens a settings dialog with:
 
 - `Show seconds: On/Off`
+- `Live snapshot` cache duration
+- `Trip detail` cache duration
+- `Vehicle live` cache duration
 
 When enabled:
 
 - departure clock times use `HH:mm:ss`
 - the activity header `last updated` time uses `HH:mm:ss`
 - tile departure clock times use `HH:mm:ss`
+
+Current default cache settings are:
+
+- live snapshot cache: `2 s`
+- GTFS trip detail cache: `1 min`
+- vehicle position cache: `2 s`
 
 Each departure card shows:
 
@@ -333,13 +342,24 @@ Examples:
 
 ### Cache
 
-The repository keeps a short in-memory cache:
+The repository keeps three separate in-memory caches:
 
-- cache window: `2 seconds`
+- live snapshot cache: `2 seconds`
+- GTFS trip detail cache: `1 minute`
+- vehicle position cache: `2 seconds`
 
 Purpose:
 
-- prevents duplicate API calls when tile, complication, and activity request data almost at the same time
+- live snapshot cache:
+  - prevents duplicate full refreshes when tile, complication, and activity request data almost at the same time
+- GTFS trip detail cache:
+  - reduces repeated `/v2/gtfs/trips/{id}` requests for the same trip during frequent refreshes
+  - lowers the chance of API rate limiting on the static trip-detail endpoint
+- vehicle position cache:
+  - prevents duplicate short-interval `/v2/vehiclepositions/{gtfsTripId}` requests
+  - also caches `404 not found` results briefly so missing live positions are not retried immediately
+
+These cache durations are configurable from the settings dialog under `Cache`.
 
 ### Automatic refresh
 

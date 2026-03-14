@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
@@ -70,10 +72,21 @@ fun WearApp(routeRepo: RouteRepository) {
     var selectedDirection by remember { mutableStateOf(routeRepo.getSelectedDirection()) }
     var autoUpdatesEnabled by remember { mutableStateOf(routeRepo.getAutoUpdatesEnabled()) }
     var showSecondsEnabled by remember { mutableStateOf(routeRepo.getShowSecondsEnabled()) }
+    var liveSnapshotCacheLabel by remember { mutableStateOf(routeRepo.getLiveSnapshotCacheLabel()) }
+    var gtfsTripDetailCacheLabel by remember { mutableStateOf(routeRepo.getGtfsTripDetailCacheLabel()) }
+    var vehiclePositionCacheLabel by remember { mutableStateOf(routeRepo.getVehiclePositionCacheLabel()) }
     var isSettingsDialogOpen by remember { mutableStateOf(false) }
     var snapshot by remember { mutableStateOf<DepartureSnapshot?>(null) }
     var isRefreshing by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
+
+    fun refreshSettingsState() {
+        autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
+        showSecondsEnabled = routeRepo.getShowSecondsEnabled()
+        liveSnapshotCacheLabel = routeRepo.getLiveSnapshotCacheLabel()
+        gtfsTripDetailCacheLabel = routeRepo.getGtfsTripDetailCacheLabel()
+        vehiclePositionCacheLabel = routeRepo.getVehiclePositionCacheLabel()
+    }
 
     suspend fun loadSnapshot(forceRefresh: Boolean, requestSurfaceRefresh: Boolean) {
         isRefreshing = true
@@ -89,8 +102,7 @@ fun WearApp(routeRepo: RouteRepository) {
             }
         }
         selectedDirection = snapshot?.direction ?: routeRepo.getSelectedDirection()
-        autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
-        showSecondsEnabled = routeRepo.getShowSecondsEnabled()
+        refreshSettingsState()
         Log.d(TAG, "Loaded snapshot. ${snapshot?.debugSummary()}")
         isRefreshing = false
     }
@@ -115,7 +127,7 @@ fun WearApp(routeRepo: RouteRepository) {
         withContext(Dispatchers.IO) {
             routeRepo.setAutoUpdatesEnabled(newValue)
         }
-        autoUpdatesEnabled = newValue
+        refreshSettingsState()
         loadSnapshot(
             forceRefresh = newValue,
             requestSurfaceRefresh = newValue,
@@ -128,8 +140,32 @@ fun WearApp(routeRepo: RouteRepository) {
         withContext(Dispatchers.IO) {
             routeRepo.setShowSecondsEnabled(newValue)
         }
-        showSecondsEnabled = newValue
+        refreshSettingsState()
         loadSnapshot(forceRefresh = false, requestSurfaceRefresh = false)
+    }
+
+    suspend fun cycleLiveSnapshotCache() {
+        Log.d(TAG, "Cycling live snapshot cache.")
+        withContext(Dispatchers.IO) {
+            routeRepo.cycleLiveSnapshotCacheMillis()
+        }
+        refreshSettingsState()
+    }
+
+    suspend fun cycleGtfsTripDetailCache() {
+        Log.d(TAG, "Cycling GTFS trip detail cache.")
+        withContext(Dispatchers.IO) {
+            routeRepo.cycleGtfsTripDetailCacheMillis()
+        }
+        refreshSettingsState()
+    }
+
+    suspend fun cycleVehiclePositionCache() {
+        Log.d(TAG, "Cycling vehicle position cache.")
+        withContext(Dispatchers.IO) {
+            routeRepo.cycleVehiclePositionCacheMillis()
+        }
+        refreshSettingsState()
     }
 
     LaunchedEffect(routeRepo, autoUpdatesEnabled) {
@@ -167,9 +203,27 @@ fun WearApp(routeRepo: RouteRepository) {
         if (isSettingsDialogOpen) {
             SettingsDialog(
                 showSecondsEnabled = showSecondsEnabled,
+                liveSnapshotCacheLabel = liveSnapshotCacheLabel,
+                gtfsTripDetailCacheLabel = gtfsTripDetailCacheLabel,
+                vehiclePositionCacheLabel = vehiclePositionCacheLabel,
                 onToggleShowSeconds = {
                     coroutineScope.launch {
                         toggleShowSeconds()
+                    }
+                },
+                onCycleLiveSnapshotCache = {
+                    coroutineScope.launch {
+                        cycleLiveSnapshotCache()
+                    }
+                },
+                onCycleGtfsTripDetailCache = {
+                    coroutineScope.launch {
+                        cycleGtfsTripDetailCache()
+                    }
+                },
+                onCycleVehiclePositionCache = {
+                    coroutineScope.launch {
+                        cycleVehiclePositionCache()
                     }
                 },
                 onDismiss = {
@@ -306,7 +360,13 @@ private fun SettingsLauncherButton(
 @Composable
 private fun SettingsDialog(
     showSecondsEnabled: Boolean,
+    liveSnapshotCacheLabel: String,
+    gtfsTripDetailCacheLabel: String,
+    vehiclePositionCacheLabel: String,
     onToggleShowSeconds: () -> Unit,
+    onCycleLiveSnapshotCache: () -> Unit,
+    onCycleGtfsTripDetailCache: () -> Unit,
+    onCycleVehiclePositionCache: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -314,6 +374,7 @@ private fun SettingsDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
+                .verticalScroll(rememberScrollState())
                 .background(
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(28.dp),
@@ -355,11 +416,56 @@ private fun SettingsDialog(
             ) {
                 Text(if (showSecondsEnabled) "Show seconds: On" else "Show seconds: Off")
             }
+            Text(
+                text = "Cache",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                textAlign = TextAlign.Center,
+            )
+            Button(
+                onClick = onCycleLiveSnapshotCache,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            ) {
+                Text("Live snapshot: $liveSnapshotCacheLabel")
+            }
+            Button(
+                onClick = onCycleGtfsTripDetailCache,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            ) {
+                Text("Trip detail: $gtfsTripDetailCacheLabel")
+            }
+            Button(
+                onClick = onCycleVehiclePositionCache,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            ) {
+                Text("Vehicle live: $vehiclePositionCacheLabel")
+            }
             Button(
                 onClick = onDismiss,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
+                    .padding(top = 12.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,

@@ -31,8 +31,26 @@ private const val PREFS_NAME = "route_prefs"
 private const val PREF_DIRECTION = "selected_direction"
 private const val PREF_AUTO_UPDATES_ENABLED = "auto_updates_enabled"
 private const val PREF_SHOW_SECONDS = "show_seconds"
+private const val PREF_LIVE_SNAPSHOT_CACHE_MILLIS = "live_snapshot_cache_millis"
+private const val PREF_GTFS_TRIP_DETAIL_CACHE_MILLIS = "gtfs_trip_detail_cache_millis"
+private const val PREF_VEHICLE_POSITION_CACHE_MILLIS = "vehicle_position_cache_millis"
 private val DISPLAY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DISPLAY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+
+private data class CacheDurationOption(
+    val millis: Long,
+    val label: String,
+)
+
+private data class TripDetailCacheKey(
+    val tripId: String,
+    val serviceDate: String,
+)
+
+private sealed interface VehiclePositionCacheValue {
+    data class Present(val body: JSONObject) : VehiclePositionCacheValue
+    object Missing : VehiclePositionCacheValue
+}
 
 fun formatDisplayTime(time: ZonedDateTime, showSeconds: Boolean): String {
     return time.format(
@@ -79,17 +97,39 @@ class RouteRepository(private val context: Context) {
         private const val API_BASE_URL = "https://api.golemio.cz"
         private const val SEARCH_WINDOW_MINUTES = 120
         private const val DEFAULT_TIMEOUT_MILLIS = 10_000
-        private const val CACHE_WINDOW_MILLIS = 2_000L
+        private const val DEFAULT_LIVE_SNAPSHOT_CACHE_MILLIS = 2_000L
+        private const val DEFAULT_GTFS_TRIP_DETAIL_CACHE_MILLIS = 60_000L
+        private const val DEFAULT_VEHICLE_POSITION_CACHE_MILLIS = 2_000L
 
         const val LINE_NAME = "7"
         const val MAX_RESULTS = 3
 
         private val PRAGUE_ZONE: ZoneId = ZoneId.of("Europe/Prague")
+        private val LIVE_SNAPSHOT_CACHE_OPTIONS = listOf(
+            CacheDurationOption(0L, "Off"),
+            CacheDurationOption(2_000L, "2 s"),
+            CacheDurationOption(5_000L, "5 s"),
+            CacheDurationOption(10_000L, "10 s"),
+        )
+        private val GTFS_TRIP_DETAIL_CACHE_OPTIONS = listOf(
+            CacheDurationOption(0L, "Off"),
+            CacheDurationOption(30_000L, "30 s"),
+            CacheDurationOption(60_000L, "1 min"),
+            CacheDurationOption(300_000L, "5 min"),
+        )
+        private val VEHICLE_POSITION_CACHE_OPTIONS = listOf(
+            CacheDurationOption(0L, "Off"),
+            CacheDurationOption(2_000L, "2 s"),
+            CacheDurationOption(5_000L, "5 s"),
+            CacheDurationOption(10_000L, "10 s"),
+        )
         @Volatile
         private var cachedSnapshot: DepartureSnapshot? = null
 
         @Volatile
         private var cacheTimestampElapsedRealtime: Long = 0L
+        private val tripDetailCache = TimedMemoryCache<TripDetailCacheKey, JSONObject>()
+        private val vehiclePositionCache = TimedMemoryCache<String, VehiclePositionCacheValue>()
 
         fun previewSnapshot(
             direction: RouteDirection = RouteDirection.TO_NADRAZI_VRSOVICE,
@@ -117,6 +157,30 @@ class RouteRepository(private val context: Context) {
 
     fun getShowSecondsEnabled(): Boolean {
         return prefs.getBoolean(PREF_SHOW_SECONDS, false)
+    }
+
+    fun getLiveSnapshotCacheMillis(): Long {
+        return prefs.getLong(PREF_LIVE_SNAPSHOT_CACHE_MILLIS, DEFAULT_LIVE_SNAPSHOT_CACHE_MILLIS)
+    }
+
+    fun getGtfsTripDetailCacheMillis(): Long {
+        return prefs.getLong(PREF_GTFS_TRIP_DETAIL_CACHE_MILLIS, DEFAULT_GTFS_TRIP_DETAIL_CACHE_MILLIS)
+    }
+
+    fun getVehiclePositionCacheMillis(): Long {
+        return prefs.getLong(PREF_VEHICLE_POSITION_CACHE_MILLIS, DEFAULT_VEHICLE_POSITION_CACHE_MILLIS)
+    }
+
+    fun getLiveSnapshotCacheLabel(): String {
+        return cacheDurationLabel(getLiveSnapshotCacheMillis())
+    }
+
+    fun getGtfsTripDetailCacheLabel(): String {
+        return cacheDurationLabel(getGtfsTripDetailCacheMillis())
+    }
+
+    fun getVehiclePositionCacheLabel(): String {
+        return cacheDurationLabel(getVehiclePositionCacheMillis())
     }
 
     fun setSelectedDirection(direction: RouteDirection) {
@@ -166,8 +230,48 @@ class RouteRepository(private val context: Context) {
         requestSurfaceRefresh()
     }
 
+    fun cycleLiveSnapshotCacheMillis(): Long {
+        val nextValue = nextCacheDuration(
+            currentMillis = getLiveSnapshotCacheMillis(),
+            options = LIVE_SNAPSHOT_CACHE_OPTIONS,
+        )
+        prefs.edit {
+            putLong(PREF_LIVE_SNAPSHOT_CACHE_MILLIS, nextValue)
+        }
+        Log.d(TAG, "Live snapshot cache changed to ${cacheDurationLabel(nextValue)}")
+        requestSurfaceRefresh()
+        return nextValue
+    }
+
+    fun cycleGtfsTripDetailCacheMillis(): Long {
+        val nextValue = nextCacheDuration(
+            currentMillis = getGtfsTripDetailCacheMillis(),
+            options = GTFS_TRIP_DETAIL_CACHE_OPTIONS,
+        )
+        prefs.edit {
+            putLong(PREF_GTFS_TRIP_DETAIL_CACHE_MILLIS, nextValue)
+        }
+        Log.d(TAG, "GTFS trip detail cache changed to ${cacheDurationLabel(nextValue)}")
+        requestSurfaceRefresh()
+        return nextValue
+    }
+
+    fun cycleVehiclePositionCacheMillis(): Long {
+        val nextValue = nextCacheDuration(
+            currentMillis = getVehiclePositionCacheMillis(),
+            options = VEHICLE_POSITION_CACHE_OPTIONS,
+        )
+        prefs.edit {
+            putLong(PREF_VEHICLE_POSITION_CACHE_MILLIS, nextValue)
+        }
+        Log.d(TAG, "Vehicle position cache changed to ${cacheDurationLabel(nextValue)}")
+        requestSurfaceRefresh()
+        return nextValue
+    }
+
     fun getDepartureSnapshot(forceRefresh: Boolean = false): DepartureSnapshot {
         val selectedDirection = getSelectedDirection()
+        val snapshotCacheMillis = getLiveSnapshotCacheMillis()
         if (!forceRefresh && !getAutoUpdatesEnabled()) {
             return pausedSnapshot(
                 direction = selectedDirection,
@@ -178,15 +282,17 @@ class RouteRepository(private val context: Context) {
         val nowElapsedRealtime = SystemClock.elapsedRealtime()
         val cached = cachedSnapshot
         if (!forceRefresh &&
+            snapshotCacheMillis > 0L &&
             cached != null &&
             cached.direction == selectedDirection &&
-            nowElapsedRealtime - cacheTimestampElapsedRealtime < CACHE_WINDOW_MILLIS
+            nowElapsedRealtime - cacheTimestampElapsedRealtime < snapshotCacheMillis
         ) {
             Log.d(TAG, "Returning cached snapshot with ${cached.departures.size} departures for ${selectedDirection.preferenceKey}.")
             return cached
         }
 
         synchronized(RouteRepository::class.java) {
+            val synchronizedSnapshotCacheMillis = getLiveSnapshotCacheMillis()
             if (!forceRefresh && !getAutoUpdatesEnabled()) {
                 return pausedSnapshot(
                     direction = selectedDirection,
@@ -197,9 +303,10 @@ class RouteRepository(private val context: Context) {
             val refreshedElapsedRealtime = SystemClock.elapsedRealtime()
             val currentCached = cachedSnapshot
             if (!forceRefresh &&
+                synchronizedSnapshotCacheMillis > 0L &&
                 currentCached != null &&
                 currentCached.direction == selectedDirection &&
-                refreshedElapsedRealtime - cacheTimestampElapsedRealtime < CACHE_WINDOW_MILLIS
+                refreshedElapsedRealtime - cacheTimestampElapsedRealtime < synchronizedSnapshotCacheMillis
             ) {
                 Log.d(TAG, "Returning cached snapshot after synchronized check for ${selectedDirection.preferenceKey}.")
                 return currentCached
@@ -244,6 +351,31 @@ class RouteRepository(private val context: Context) {
 
     fun formatStatusTime(timestamp: ZonedDateTime): String {
         return formatDisplayTime(timestamp, getShowSecondsEnabled())
+    }
+
+    private fun cacheDurationLabel(durationMillis: Long): String {
+        (LIVE_SNAPSHOT_CACHE_OPTIONS + GTFS_TRIP_DETAIL_CACHE_OPTIONS + VEHICLE_POSITION_CACHE_OPTIONS)
+            .firstOrNull { it.millis == durationMillis }
+            ?.let { return it.label }
+
+        return when {
+            durationMillis <= 0L -> "Off"
+            durationMillis % 60_000L == 0L -> "${durationMillis / 60_000L} min"
+            durationMillis % 1_000L == 0L -> "${durationMillis / 1_000L} s"
+            else -> "${durationMillis} ms"
+        }
+    }
+
+    private fun nextCacheDuration(
+        currentMillis: Long,
+        options: List<CacheDurationOption>,
+    ): Long {
+        val currentIndex = options.indexOfFirst { it.millis == currentMillis }
+        return if (currentIndex == -1) {
+            options.first().millis
+        } else {
+            options[(currentIndex + 1) % options.size].millis
+        }
     }
 
     private fun requestSurfaceRefresh() {
@@ -337,14 +469,10 @@ class RouteRepository(private val context: Context) {
                 continue
             }
 
-            val tripDetail = apiGetObject(
-                "/v2/gtfs/trips/$tripId",
-                mapOf(
-                    "date" to boardStopTime.bestAvailableTime.toLocalDate().toString(),
-                    "includeStops" to "true",
-                    "includeStopTimes" to "true",
-                    "includeRoute" to "true",
-                )
+            val serviceDate = boardStopTime.bestAvailableTime.toLocalDate().toString()
+            val tripDetail = fetchTripDetail(
+                tripId = tripId,
+                serviceDate = serviceDate,
             )
             val stopTimes = tripDetail.optJSONArray("stop_times") ?: JSONArray()
             val boardingIndex = findBoardingIndex(
@@ -447,6 +575,47 @@ class RouteRepository(private val context: Context) {
         return apiGetResponseObject(path, params).body
     }
 
+    private fun fetchTripDetail(
+        tripId: String,
+        serviceDate: String,
+    ): JSONObject {
+        val cacheKey = TripDetailCacheKey(
+            tripId = tripId,
+            serviceDate = serviceDate,
+        )
+        val ttlMillis = getGtfsTripDetailCacheMillis()
+        val nowElapsedRealtime = SystemClock.elapsedRealtime()
+
+        tripDetailCache.getIfFresh(
+            key = cacheKey,
+            ttlMillis = ttlMillis,
+            nowElapsedRealtime = nowElapsedRealtime,
+        )?.let { cachedTripDetail ->
+            Log.d(TAG, "Using cached GTFS trip detail for tripId=$tripId serviceDate=$serviceDate")
+            return cachedTripDetail
+        }
+
+        val tripDetail = apiGetObject(
+            "/v2/gtfs/trips/$tripId",
+            mapOf(
+                "date" to serviceDate,
+                "includeStops" to "true",
+                "includeStopTimes" to "true",
+                "includeRoute" to "true",
+            )
+        )
+
+        if (ttlMillis > 0L) {
+            tripDetailCache.put(
+                key = cacheKey,
+                value = tripDetail,
+                nowElapsedRealtime = nowElapsedRealtime,
+            )
+        }
+
+        return tripDetail
+    }
+
     private fun apiGetResponseObject(path: String, params: Map<String, String>): ApiJsonResponse {
         val query = params.entries.joinToString("&") { (key, value) ->
             "${key.urlEncode()}=${value.urlEncode()}"
@@ -517,14 +686,50 @@ class RouteRepository(private val context: Context) {
     }
 
     private fun fetchVehiclePosition(tripId: String): JSONObject? {
+        val ttlMillis = getVehiclePositionCacheMillis()
+        val nowElapsedRealtime = SystemClock.elapsedRealtime()
+
+        vehiclePositionCache.getIfFresh(
+            key = tripId,
+            ttlMillis = ttlMillis,
+            nowElapsedRealtime = nowElapsedRealtime,
+        )?.let { cachedValue ->
+            when (cachedValue) {
+                is VehiclePositionCacheValue.Present -> {
+                    Log.d(TAG, "Using cached vehicle position for tripId=$tripId")
+                    return cachedValue.body
+                }
+
+                VehiclePositionCacheValue.Missing -> {
+                    Log.d(TAG, "Using cached vehicle-position miss for tripId=$tripId")
+                    return null
+                }
+            }
+        }
+
         return try {
-            apiGetObject(
+            val vehiclePosition = apiGetObject(
                 "/v2/vehiclepositions/$tripId",
                 mapOf("preferredTimezone" to "Europe/Prague")
             )
+            if (ttlMillis > 0L) {
+                vehiclePositionCache.put(
+                    key = tripId,
+                    value = VehiclePositionCacheValue.Present(vehiclePosition),
+                    nowElapsedRealtime = nowElapsedRealtime,
+                )
+            }
+            vehiclePosition
         } catch (error: ApiException) {
             if (error.statusCode == 404) {
                 Log.d(TAG, "Vehicle position not found for tripId=$tripId")
+                if (ttlMillis > 0L) {
+                    vehiclePositionCache.put(
+                        key = tripId,
+                        value = VehiclePositionCacheValue.Missing,
+                        nowElapsedRealtime = nowElapsedRealtime,
+                    )
+                }
                 null
             } else {
                 Log.e(

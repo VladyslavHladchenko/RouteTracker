@@ -88,8 +88,9 @@ How the app uses it:
 - reads `route.short_name` and keeps only line `7`
 - reads `stop.id` and keeps only the currently selected source stop
 - reads `trip.id` as the stable ID for follow-up GTFS and vehicle queries
-- reads `departure_timestamp.predicted` first, then falls back to `scheduled`
-- reads `delay.seconds` as the initial delay value
+- reads both `departure_timestamp.scheduled` and `departure_timestamp.predicted`
+- treats `predicted` as the board-provided stop-specific expected departure time when vehicle-position delay is not available
+- reads `delay.seconds` as the board-level delay fallback
 - reads `trip.is_canceled` as the initial cancellation flag
 
 Data returned but not used by the app:
@@ -157,7 +158,8 @@ The app uses `properties.last_position`. Relevant nested fields are:
 
 How the app uses it:
 
-- if present, `properties.last_position.delay.actual` replaces the older departure-board delay
+- if present, `properties.last_position.delay.actual` becomes the preferred delay source
+- when that preferred delay exists, the app rebuilds the displayed departure time as `scheduled + delay.actual`
 - if present, `properties.last_position.is_canceled` replaces the older departure-board cancellation flag
 - if the endpoint returns `404`, the app treats that as "no live vehicle position available" and keeps the departure-board values
 
@@ -170,30 +172,40 @@ Data returned but not used by the app:
 
 ### Internal App Model
 
-After combining those three responses, the repository converts the data into an internal `RouteDeparture` object with:
+The timing merge is handled by `DepartureTimingResolver` in `wear/src/main/java/com/example/routetracker/data/DepartureTiming.kt`.
+
+It resolves one final departure timestamp using this priority:
+
+1. `scheduled + vehiclepositions.properties.last_position.delay.actual`
+2. `departure_timestamp.predicted`
+3. `departure_timestamp.scheduled`
+
+Separately, it resolves the displayed delay using this priority:
+
+1. `vehiclepositions.properties.last_position.delay.actual`
+2. `departureboards.delay.seconds`
+3. derived value from `predicted - scheduled`
+4. `0`
+
+After that merge, the repository converts the result into an internal `RouteDeparture` object with:
 
 - `tripId: string`
 - `departureTime: ZonedDateTime`
-- `minutesUntilDeparture: int`
+- `countdownMinutes: int`
 - `delayMinutes: int`
-
-The app then derives:
-
-- `liveMinutesUntilDeparture`
-- tile/activity labels
-- complication countdown text
 
 ### High-Level Route-Finding Flow
 
 1. Fetch the departure board for the selected source stop.
 2. From `departures[]`, keep only items where `route.short_name == "7"` and `stop.id` matches the selected platform.
-3. Parse `departure_timestamp.predicted` or `departure_timestamp.scheduled` into a Prague `ZonedDateTime`.
+3. Parse `departure_timestamp.scheduled` and `departure_timestamp.predicted` into Prague `ZonedDateTime` values.
 4. Fetch `/v2/gtfs/trips/{tripId}` for that departure.
 5. In `stop_times[]`, find the boarded source stop occurrence.
 6. Search later `stop_times[]` entries for the selected destination stop ID.
 7. Fetch `/v2/vehiclepositions/{gtfsTripId}` when available.
-8. Prefer `last_position.delay.actual` and `last_position.is_canceled` over the older board values.
-9. Build up to the next `3` direct departures for the watch surfaces.
+8. Prefer `last_position.is_canceled` over the older board value.
+9. Resolve one final departure time and one final delay value with `DepartureTimingResolver`.
+10. Build up to the next `3` direct departures for the watch surfaces.
 
 ## Surface Behavior
 
@@ -201,15 +213,17 @@ The app then derives:
 
 The complication shows a single number only:
 
-- `live countdown in minutes`
+- `countdown in minutes to the resolved departure time`
 
 That value is:
 
-- `minutes until departure + positive/negative delay`, clamped to `0`
+- time remaining until the final departure timestamp chosen by the resolver
+- clamped to `0`
 
 Example:
 
 - scheduled in `10` minutes with delay `+1` -> complication shows `11`
+- scheduled in `10` minutes with delay `+1`, but the board already returned `predicted = now + 11 min` -> complication still shows `11`, not `12`
 
 The complication does not currently show delay as a separate badge.
 
@@ -232,7 +246,7 @@ Each departure row is currently formatted as:
 Where:
 
 - `HH:mm` = departure clock time
-- `N min` = live countdown in minutes
+- `N min` = countdown in minutes to the resolved departure time
 - `+D` = delay, only shown when delay is positive
 
 Example:
@@ -271,7 +285,7 @@ When enabled:
 Each departure card shows:
 
 - first line: departure clock time
-- second line: live countdown text
+- second line: countdown text to the resolved departure time
 - optional delay text
 
 Example:
@@ -288,17 +302,17 @@ Or:
 
 ### Complication number
 
-- `live minutes until departure`
-- uses delay-adjusted countdown
+- `minutes until the resolved departure time`
+- never adds the same delay twice
 
 ### Tile number
 
-- `live minutes until departure`
+- `minutes until the resolved departure time`
 - delay shown separately as `+D`
 
 ### Activity list number
 
-- `live minutes until departure`
+- `minutes until the resolved departure time`
 - delay shown separately as text
 
 ### Header time in the activity
@@ -384,12 +398,18 @@ Important files:
   - caching
   - shared display labels
   - selected direction and auto-update preferences
+- `wear/src/main/java/com/example/routetracker/data/DepartureTiming.kt`
+  - pure timing resolver
+  - final departure timestamp selection
+  - conversion into `RouteDeparture`
 - `wear/src/main/java/com/example/routetracker/complication/MainComplicationService.kt`
   - complication provider
 - `wear/src/main/java/com/example/routetracker/tile/MainTileService.kt`
   - tile UI
 - `wear/src/main/java/com/example/routetracker/presentation/MainActivity.kt`
   - full-screen watch UI
+- `wear/src/test/java/com/example/routetracker/data/DepartureTimingResolverTest.kt`
+  - unit tests for resolver priority and countdown behavior
 - `wear/src/main/java/com/example/routetracker/presentation/theme/Theme.kt`
   - watch theme/colors
 - `wear/src/main/AndroidManifest.xml`

@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.guava)
     implementation(libs.androidx.tiles.tooling.preview)
     implementation(libs.androidx.watchface.complications.data.source.ktx)
+    testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)

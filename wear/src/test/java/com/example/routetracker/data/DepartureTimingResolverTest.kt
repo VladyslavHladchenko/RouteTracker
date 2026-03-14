@@ -1,0 +1,112 @@
+package com.example.routetracker.data
+
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class DepartureTimingResolverTest {
+    private val pragueZone: ZoneId = ZoneId.of("Europe/Prague")
+
+    @Test
+    fun `uses vehicle delay to build final departure time when available`() {
+        val scheduled = pragueTime(hour = 12, minute = 0)
+        val predicted = scheduled.plusMinutes(2)
+
+        val resolved = DepartureTimingResolver.resolve(
+            DepartureRealtimeInputs(
+                scheduledDepartureTime = scheduled,
+                predictedDepartureTime = predicted,
+                boardDelaySeconds = 120,
+                vehicleDelaySeconds = 300,
+            )
+        )
+
+        assertEquals(scheduled.plusMinutes(5), resolved.departureTime)
+        assertEquals(300, resolved.delaySeconds)
+    }
+
+    @Test
+    fun `falls back to departure board predicted time when vehicle delay is missing`() {
+        val scheduled = pragueTime(hour = 12, minute = 0)
+        val predicted = scheduled.plusMinutes(3)
+
+        val resolved = DepartureTimingResolver.resolve(
+            DepartureRealtimeInputs(
+                scheduledDepartureTime = scheduled,
+                predictedDepartureTime = predicted,
+                boardDelaySeconds = 180,
+                vehicleDelaySeconds = null,
+            )
+        )
+
+        assertEquals(predicted, resolved.departureTime)
+        assertEquals(180, resolved.delaySeconds)
+    }
+
+    @Test
+    fun `derives delay from predicted timestamp when board delay is not provided`() {
+        val scheduled = pragueTime(hour = 12, minute = 0)
+        val predicted = scheduled.plusMinutes(4)
+
+        val resolved = DepartureTimingResolver.resolve(
+            DepartureRealtimeInputs(
+                scheduledDepartureTime = scheduled,
+                predictedDepartureTime = predicted,
+                boardDelaySeconds = null,
+                vehicleDelaySeconds = null,
+            )
+        )
+
+        assertEquals(predicted, resolved.departureTime)
+        assertEquals(240, resolved.delaySeconds)
+    }
+
+    @Test
+    fun `falls back to scheduled departure time when no realtime data exists`() {
+        val scheduled = pragueTime(hour = 12, minute = 0)
+
+        val resolved = DepartureTimingResolver.resolve(
+            DepartureRealtimeInputs(
+                scheduledDepartureTime = scheduled,
+                predictedDepartureTime = null,
+                boardDelaySeconds = null,
+                vehicleDelaySeconds = null,
+            )
+        )
+
+        assertEquals(scheduled, resolved.departureTime)
+        assertEquals(0, resolved.delaySeconds)
+    }
+
+    @Test
+    fun `route departure countdown uses resolved departure time without adding delay twice`() {
+        val referenceNow = pragueTime(hour = 11, minute = 55)
+        val scheduled = pragueTime(hour = 12, minute = 0)
+        val predicted = scheduled.plusMinutes(2)
+
+        val routeDeparture = DepartureTimingResolver.resolve(
+            DepartureRealtimeInputs(
+                scheduledDepartureTime = scheduled,
+                predictedDepartureTime = predicted,
+                boardDelaySeconds = 120,
+                vehicleDelaySeconds = null,
+            )
+        ).toRouteDeparture(
+            tripId = "trip-1",
+            referenceNow = referenceNow,
+        )
+
+        assertEquals(7, routeDeparture.countdownMinutes)
+        assertEquals("+2", routeDeparture.delayBadgeLabel)
+        assertEquals("In 7 min  Delay +2 min", routeDeparture.detailStatusLabel)
+        assertEquals("7", routeDeparture.countdownLabel)
+    }
+
+    private fun pragueTime(
+        hour: Int,
+        minute: Int,
+    ): ZonedDateTime {
+        return ZonedDateTime.of(2026, 3, 14, hour, minute, 0, 0, pragueZone)
+    }
+}

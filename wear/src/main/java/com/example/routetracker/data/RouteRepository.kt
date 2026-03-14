@@ -17,7 +17,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -25,7 +24,6 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 private const val TAG = "RouteRepository"
 private const val MAX_LOG_BODY_LENGTH = 500
@@ -328,8 +326,8 @@ class RouteRepository(private val context: Context) {
                 continue
             }
 
-            val departureTime = parseBoardTimestamp(departure, "departure_timestamp")
-            if (departureTime == null) {
+            val boardStopTime = parseBoardStopTime(departure, "departure_timestamp")
+            if (boardStopTime == null) {
                 skippedMissingTime += 1
                 continue
             }
@@ -342,14 +340,18 @@ class RouteRepository(private val context: Context) {
             val tripDetail = apiGetObject(
                 "/v2/gtfs/trips/$tripId",
                 mapOf(
-                    "date" to departureTime.toLocalDate().toString(),
+                    "date" to boardStopTime.bestAvailableTime.toLocalDate().toString(),
                     "includeStops" to "true",
                     "includeStopTimes" to "true",
                     "includeRoute" to "true",
                 )
             )
             val stopTimes = tripDetail.optJSONArray("stop_times") ?: JSONArray()
-            val boardingIndex = findBoardingIndex(stopTimes, direction.sourceStopId, departureTime)
+            val boardingIndex = findBoardingIndex(
+                stopTimes = stopTimes,
+                boardedStopId = direction.sourceStopId,
+                boardingReferenceTime = boardStopTime.bestAvailableTime,
+            )
             if (boardingIndex == null) {
                 skippedMissingBoardingIndex += 1
                 continue
@@ -360,13 +362,14 @@ class RouteRepository(private val context: Context) {
             }
 
             var canceled = optionalBoolean(trip, "is_canceled")
-            var delaySeconds = extractBoardDelaySeconds(departure)
+            val boardDelaySeconds = extractBoardDelaySeconds(departure)
+            var vehicleDelaySeconds: Int? = null
 
             fetchVehiclePosition(tripId)?.let { vehiclePosition: JSONObject ->
                 val lastPosition = vehiclePosition
                     .optJSONObject("properties")
                     ?.optJSONObject("last_position")
-                delaySeconds = optionalInt(lastPosition?.optJSONObject("delay"), "actual") ?: delaySeconds
+                vehicleDelaySeconds = optionalInt(lastPosition?.optJSONObject("delay"), "actual")
                 optionalBoolean(lastPosition, "is_canceled")?.let { canceled = it }
             }
 
@@ -375,11 +378,14 @@ class RouteRepository(private val context: Context) {
                 continue
             }
 
-            val matchedDeparture = RouteDeparture(
+            val resolvedTiming = resolveDepartureTiming(
+                boardStopTime = boardStopTime,
+                boardDelaySeconds = boardDelaySeconds,
+                vehicleDelaySeconds = vehicleDelaySeconds,
+            )
+            val matchedDeparture = resolvedTiming.toRouteDeparture(
                 tripId = tripId,
-                departureTime = departureTime,
-                minutesUntilDeparture = minutesUntilDeparture(referenceNow, departureTime),
-                delayMinutes = (delaySeconds / 60.0).roundToInt(),
+                referenceNow = referenceNow,
             )
             matches += matchedDeparture
             Log.d(
@@ -530,33 +536,51 @@ class RouteRepository(private val context: Context) {
         }
     }
 
+    private fun resolveDepartureTiming(
+        boardStopTime: BoardStopTime,
+        boardDelaySeconds: Int?,
+        vehicleDelaySeconds: Int?,
+    ): ResolvedDepartureTiming {
+        return DepartureTimingResolver.resolve(
+            DepartureRealtimeInputs(
+                scheduledDepartureTime = boardStopTime.scheduledTime,
+                predictedDepartureTime = boardStopTime.predictedTime,
+                boardDelaySeconds = boardDelaySeconds,
+                vehicleDelaySeconds = vehicleDelaySeconds,
+            )
+        )
+    }
+
     private fun readResponseBody(connection: HttpURLConnection, statusCode: Int): String {
         val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
         return stream?.bufferedReader()?.use { it.readText() }.orEmpty()
     }
 
-    private fun parseBoardTimestamp(entry: JSONObject, fieldName: String): ZonedDateTime? {
+    private fun parseBoardStopTime(entry: JSONObject, fieldName: String): BoardStopTime? {
         val timestamps = entry.optJSONObject(fieldName) ?: return null
-        val value = timestamps.optString("predicted").ifBlank {
-            timestamps.optString("scheduled")
-        }
-        if (value.isBlank()) {
+        val scheduledValue = timestamps.optString("scheduled")
+        if (scheduledValue.isBlank()) {
             return null
         }
-        return OffsetDateTime.parse(value).atZoneSameInstant(PRAGUE_ZONE)
+
+        val predictedValue = timestamps.optString("predicted").ifBlank { null }
+        return BoardStopTime(
+            scheduledTime = OffsetDateTime.parse(scheduledValue).atZoneSameInstant(PRAGUE_ZONE),
+            predictedTime = predictedValue?.let { OffsetDateTime.parse(it).atZoneSameInstant(PRAGUE_ZONE) },
+        )
     }
 
-    private fun extractBoardDelaySeconds(entry: JSONObject): Int {
+    private fun extractBoardDelaySeconds(entry: JSONObject): Int? {
         optionalInt(entry.optJSONObject("delay"), "seconds")?.let { return it }
 
-        val timestamps = entry.optJSONObject("departure_timestamp") ?: return 0
+        val timestamps = entry.optJSONObject("departure_timestamp") ?: return null
         val predicted = timestamps.optString("predicted")
         val scheduled = timestamps.optString("scheduled")
         if (predicted.isBlank() || scheduled.isBlank()) {
-            return 0
+            return null
         }
 
-        return Duration.between(
+        return java.time.Duration.between(
             OffsetDateTime.parse(scheduled),
             OffsetDateTime.parse(predicted),
         ).seconds.toInt()
@@ -565,7 +589,7 @@ class RouteRepository(private val context: Context) {
     private fun findBoardingIndex(
         stopTimes: JSONArray,
         boardedStopId: String,
-        departureTime: ZonedDateTime,
+        boardingReferenceTime: ZonedDateTime,
     ): Int? {
         var fallbackIndex: Int? = null
 
@@ -581,8 +605,8 @@ class RouteRepository(private val context: Context) {
                 continue
             }
 
-            val scheduledDeparture = combineServiceTime(departureTime, departureValue)
-            if (!scheduledDeparture.plusMinutes(1).isBefore(departureTime)) {
+            val scheduledDeparture = combineServiceTime(boardingReferenceTime, departureValue)
+            if (!scheduledDeparture.plusMinutes(1).isBefore(boardingReferenceTime)) {
                 return index
             }
         }
@@ -618,10 +642,6 @@ class RouteRepository(private val context: Context) {
             .plusSeconds(seconds.toLong())
     }
 
-    private fun minutesUntilDeparture(now: ZonedDateTime, departureTime: ZonedDateTime): Int {
-        return max(0, Duration.between(now, departureTime).toMinutes().toInt())
-    }
-
     private fun optionalBoolean(jsonObject: JSONObject?, key: String): Boolean? {
         if (jsonObject == null || !jsonObject.has(key) || jsonObject.isNull(key)) {
             return null
@@ -642,26 +662,20 @@ class RouteRepository(private val context: Context) {
 data class RouteDeparture(
     val tripId: String,
     val departureTime: ZonedDateTime,
-    val minutesUntilDeparture: Int,
+    val countdownMinutes: Int,
     val delayMinutes: Int,
 ) {
-    val liveMinutesUntilDeparture: Int
-        get() = max(0, minutesUntilDeparture + delayMinutes)
-
     val compactLabel: String
-        get() = "$minutesUntilDeparture [${delayMinutes.formatDelay()}]"
+        get() = "$countdownMinutes [${delayMinutes.formatDelay()}]"
 
-    val minutesLabel: String
-        get() = minutesUntilDeparture.toString()
-
-    val liveMinutesLabel: String
-        get() = liveMinutesUntilDeparture.toString()
+    val countdownLabel: String
+        get() = countdownMinutes.toString()
 
     val listTimeLabel: String
-        get() = when (liveMinutesUntilDeparture) {
+        get() = when (countdownMinutes) {
             0 -> "now"
             1 -> "1 min"
-            else -> "$liveMinutesUntilDeparture min"
+            else -> "$countdownMinutes min"
         }
 
     val delayBadgeLabel: String?
@@ -670,10 +684,10 @@ data class RouteDeparture(
     val detailStatusLabel: String
         get() = buildString {
             append(
-                when (liveMinutesUntilDeparture) {
+                when (countdownMinutes) {
                     0 -> "Due now"
                     1 -> "In 1 min"
-                    else -> "In $liveMinutesUntilDeparture min"
+                    else -> "In $countdownMinutes min"
                 }
             )
             delayBadgeLabel?.let { badge ->
@@ -700,7 +714,7 @@ data class RouteDeparture(
 
     val accessibilityLabel: String
         get() = buildString {
-            append("Departure in $liveMinutesUntilDeparture minutes.")
+            append("Departure in $countdownMinutes minutes.")
             if (delayMinutes > 0) {
                 append(" Delay ${delayMinutes.formatDelay()} minutes.")
             }
@@ -724,7 +738,7 @@ data class DepartureSnapshot(
     }
 
     fun complicationText(): String {
-        return departures.firstOrNull()?.liveMinutesLabel ?: "--"
+        return departures.firstOrNull()?.countdownLabel ?: "--"
     }
 
     fun complicationDelayText(): String? {

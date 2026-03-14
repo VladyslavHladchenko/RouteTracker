@@ -9,6 +9,7 @@ import androidx.core.content.edit
 import androidx.wear.tiles.TileService
 import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
 import com.example.routetracker.complication.MainComplicationService
+import com.example.routetracker.complication.StopwatchComplicationService
 import com.example.routetracker.tile.MainTileService
 import org.json.JSONArray
 import org.json.JSONObject
@@ -493,10 +494,16 @@ class RouteRepository(private val context: Context) {
         }
 
         try {
-            val componentName = ComponentName(context, MainComplicationService::class.java)
-            ComplicationDataSourceUpdateRequester
-                .create(context, componentName)
-                .requestUpdateAll()
+            val complicationServices = listOf(
+                MainComplicationService::class.java,
+                StopwatchComplicationService::class.java,
+            )
+            complicationServices.forEach { serviceClass ->
+                val componentName = ComponentName(context, serviceClass)
+                ComplicationDataSourceUpdateRequester
+                    .create(context, componentName)
+                    .requestUpdateAll()
+            }
             Log.d(TAG, "Requested complication refresh.")
         } catch (_: Exception) {
             Log.w(TAG, "Complication refresh request failed.")

@@ -1,6 +1,7 @@
 <resources>
-    <string name="app_name">Number 7</string>
+    <string name="app_name">Transport Tracker</string>
     <string name="hello_world">Hello, %1$s!</string>
-    <string name="tile_label">Number 7 Tile</string>
-    <string name="complication_label">Number 7 Complication</string>
+    <string name="tile_label">Transport Tracker Tile</string>
+    <string name="complication_label_minutes">Transport Tracker (Minutes)</string>
+    <string name="complication_label_stopwatch">Transport Tracker (Stopwatch)</string>
 </resources>

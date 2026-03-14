@@ -230,7 +230,14 @@ After that merge, the repository converts the result into an internal `RouteDepa
 
 ### Complication
 
-The complication shows the next departure as a self-updating countdown:
+The app now exposes two watch-face complications:
+
+- `Transport Tracker (Minutes)`
+  - minute-oriented countdown using Wear OS short single-unit rendering
+- `Transport Tracker (Stopwatch)`
+  - stopwatch-style countdown intended for "don't miss the tram" use cases
+
+Both complication providers show the next departure as a self-updating countdown:
 
 - main text:
   - countdown to the resolved next departure time
@@ -390,17 +397,19 @@ Or:
 - rendered by the watch face from the stored target departure timestamp
 - never adds the same delay twice
 
-Important nuance:
+Important nuance for the minutes complication:
 
 - the activity and tile currently floor countdowns to whole minutes
-- the complication uses Wear OS `TimeDifferenceComplicationText` with minute granularity
+- the minutes complication uses Wear OS `TimeDifferenceComplicationText` with minute granularity
 - that means partial minutes can round up on the watch face
 
 Example:
 
 - if the real remaining time is `13 min 05 s`
   - activity/tile may show `13`
-  - complication may show `14M`
+  - the minutes complication may show `14M`
+
+The stopwatch complication avoids that specific rounding issue by showing a stopwatch-style live countdown instead.
 
 ### Tile number
 

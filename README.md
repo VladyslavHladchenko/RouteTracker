@@ -45,20 +45,155 @@ These values are defined in the wear app and are intentionally hardcoded for now
 
 ## Data Source
 
-The wear app uses Golemio endpoints:
+The wear app uses Golemio endpoints described by the local OpenAPI specs:
 
-- `/v2/pid/departureboards`
-- `/v2/gtfs/trips/{tripId}`
-- `/v2/vehiclepositions/{tripId}`
+- `golemio-pid-openapi.json`
+- `golemio-openapi.json`
 
-High-level route-finding flow:
+The current implementation is interested in only a small subset of each response.
 
-1. Read live departures for the selected origin stop.
-2. Filter to line `7`.
-3. Load GTFS trip detail for each candidate.
-4. Verify that the trip reaches the selected destination stop directly.
-5. Enrich the result with delay and cancellation data when available.
-6. Return the next `3` matching trips.
+### `/v2/pid/departureboards`
+
+Response format:
+
+- JSON object: `PIDDepartureBoard`
+- top-level keys:
+  - `stops[]`
+  - `departures[]`
+  - `infotexts[]`
+
+The app uses `departures[]`. Each departure item is a JSON object with these relevant nested objects:
+
+- `route`
+  - `short_name: string`
+  - `type: number`
+- `stop`
+  - `id: string`
+  - `platform_code: string|null`
+- `trip`
+  - `id: string`
+  - `headsign: string`
+  - `is_canceled: boolean`
+- `departure_timestamp`
+  - `predicted: string` in ISO datetime format
+  - `scheduled: string` in ISO datetime format
+  - `minutes: string`
+- `delay`
+  - `seconds: number|null`
+  - `minutes: number|null`
+  - `is_available: boolean`
+
+How the app uses it:
+
+- reads `route.short_name` and keeps only line `7`
+- reads `stop.id` and keeps only the currently selected source stop
+- reads `trip.id` as the stable ID for follow-up GTFS and vehicle queries
+- reads `departure_timestamp.predicted` first, then falls back to `scheduled`
+- reads `delay.seconds` as the initial delay value
+- reads `trip.is_canceled` as the initial cancellation flag
+
+Data returned but not used by the app:
+
+- `stops[]`
+- `infotexts[]`
+- most route metadata such as `is_night`
+- most trip metadata such as `headsign`, `is_at_stop`, wheelchair info
+
+### `/v2/gtfs/trips/{id}`
+
+Request options used by the app:
+
+- `date=YYYY-MM-DD`
+- `includeStops=true`
+- `includeStopTimes=true`
+- `includeRoute=true`
+
+Response format:
+
+- JSON object based on `GTFSTrip`
+- enriched with optional objects/arrays such as:
+  - `stop_times[]`
+  - `route`
+  - `service`
+  - `shapes[]`
+
+The app uses `stop_times[]`. Each stop time item is a JSON object with these relevant fields:
+
+- `stop_id: string`
+- `arrival_time: string` in GTFS service-time format `HH:MM:SS`
+- `departure_time: string` in GTFS service-time format `HH:MM:SS`
+- `stop_sequence: number`
+- `trip_id: string`
+
+How the app uses it:
+
+- finds the boarded occurrence of the source stop using `stop_id` plus the closest matching `departure_time`
+- searches only downstream `stop_times[]` entries after boarding
+- checks whether the selected destination `stop_id` appears later in the same trip
+- reads the destination `arrival_time` to know when the direct ride should arrive
+
+Data returned but not used by the app:
+
+- `shapes[]`
+- `service`
+- most base trip metadata such as `route_id`, `shape_id`, `trip_headsign`
+- most route metadata even though `includeRoute=true` is requested
+
+### `/v2/vehiclepositions/{gtfsTripId}`
+
+Response format:
+
+- GeoJSON-like feature object
+- top-level keys include:
+  - `type`
+  - `geometry`
+  - `properties`
+
+The app uses `properties.last_position`. Relevant nested fields are:
+
+- `delay.actual: number|null`
+- `is_canceled: boolean|null`
+- `origin_timestamp: string` in ISO datetime format
+
+How the app uses it:
+
+- if present, `properties.last_position.delay.actual` replaces the older departure-board delay
+- if present, `properties.last_position.is_canceled` replaces the older departure-board cancellation flag
+- if the endpoint returns `404`, the app treats that as "no live vehicle position available" and keeps the departure-board values
+
+Data returned but not used by the app:
+
+- `geometry`
+- `trip`
+- `all_positions`
+- `bearing`, `speed`, `tracking`, `next_stop`, `last_stop`
+
+### Internal App Model
+
+After combining those three responses, the repository converts the data into an internal `RouteDeparture` object with:
+
+- `tripId: string`
+- `departureTime: ZonedDateTime`
+- `minutesUntilDeparture: int`
+- `delayMinutes: int`
+
+The app then derives:
+
+- `liveMinutesUntilDeparture`
+- tile/activity labels
+- complication countdown text
+
+### High-Level Route-Finding Flow
+
+1. Fetch the departure board for the selected source stop.
+2. From `departures[]`, keep only items where `route.short_name == "7"` and `stop.id` matches the selected platform.
+3. Parse `departure_timestamp.predicted` or `departure_timestamp.scheduled` into a Prague `ZonedDateTime`.
+4. Fetch `/v2/gtfs/trips/{tripId}` for that departure.
+5. In `stop_times[]`, find the boarded source stop occurrence.
+6. Search later `stop_times[]` entries for the selected destination stop ID.
+7. Fetch `/v2/vehiclepositions/{gtfsTripId}` when available.
+8. Prefer `last_position.delay.actual` and `last_position.is_canceled` over the older board values.
+9. Build up to the next `3` direct departures for the watch surfaces.
 
 ## Surface Behavior
 

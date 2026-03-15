@@ -1269,6 +1269,12 @@ data class RouteDeparture(
     val boardingPlatformDisplayLabel: String?
         get() = boardedPlatformLabel?.takeIf { it.isNotBlank() } ?: boardedStopId?.takeIf { it.isNotBlank() }
 
+    val boardingPlatformCompactLabel: String?
+        get() = boardingPlatformDisplayLabel?.let(::compactPlatformLabel)
+
+    val activityDelayCompactLabel: String?
+        get() = delayMinutes.takeIf { it > 0 }?.let { "+${it}m" }
+
     val detailStatusLabel: String
         get() = buildString {
             append(
@@ -1296,11 +1302,11 @@ data class RouteDeparture(
         }
     }
 
-    fun activityStatusLabel(
+    fun activityCountdownLabel(
         referenceNow: ZonedDateTime,
         showSeconds: Boolean,
     ): String {
-        val baseLabel = if (showSeconds) {
+        return if (showSeconds) {
             liveCountdownLabel(referenceNow)
         } else {
             when (countdownMinutes) {
@@ -1309,6 +1315,16 @@ data class RouteDeparture(
                 else -> "In $countdownMinutes min"
             }
         }
+    }
+
+    fun activityStatusLabel(
+        referenceNow: ZonedDateTime,
+        showSeconds: Boolean,
+    ): String {
+        val baseLabel = activityCountdownLabel(
+            referenceNow = referenceNow,
+            showSeconds = showSeconds,
+        )
 
         return buildString {
             append(baseLabel)
@@ -1346,6 +1362,15 @@ data class RouteDeparture(
         return when {
             minutesPart > 0L -> "In $minutesPart min ${secondsPart.toString().padStart(2, '0')} s"
             else -> "In $secondsPart s"
+        }
+    }
+
+    private fun compactPlatformLabel(label: String): String {
+        val prefix = "Platform "
+        return if (label.startsWith(prefix, ignoreCase = true)) {
+            label.substring(prefix.length).trim().ifBlank { label }
+        } else {
+            label
         }
     }
 }

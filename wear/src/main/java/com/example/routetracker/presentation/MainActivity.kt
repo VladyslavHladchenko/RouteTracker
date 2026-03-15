@@ -76,6 +76,7 @@ private const val SETTINGS_ROUTE = "settings"
 private const val ROUTE_SETUP_ROUTE = "route_setup"
 private const val TRIP_DETAILS_ROUTE = "trip_details"
 private val BOARDING_PLATFORM_COLOR = Color(0xFF70D38A)
+private val ACTIVITY_DELAY_COLOR = Color(0xFFF0C44C)
 private val PREVIEW_UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val ACTIVITY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val ACTIVITY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
@@ -1042,32 +1043,56 @@ private fun DepartureRow(
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        Text(
-            text = departure.clockLabel(
-                showSeconds = showSecondsEnabled,
-                includeLine = !selection.usesFixedLine(),
-            ),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        if (selection.origin.platformKey == null) {
-            departure.boardingPlatformDisplayLabel?.let { boardingPlatformLabel ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = departure.clockLabel(
+                    showSeconds = showSecondsEnabled,
+                    includeLine = !selection.usesFixedLine(),
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+            )
+            if (selection.origin.platformKey == null) {
+                departure.boardingPlatformCompactLabel?.let { boardingPlatformLabel ->
+                    Text(
+                        text = boardingPlatformLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BOARDING_PLATFORM_COLOR,
+                        textAlign = TextAlign.End,
+                    )
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = departure.activityCountdownLabel(
+                    referenceNow = currentSystemTime,
+                    showSeconds = showSecondsEnabled,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            departure.activityDelayCompactLabel?.let { delayLabel ->
                 Text(
-                    text = boardingPlatformLabel,
+                    text = delayLabel,
                     style = MaterialTheme.typography.bodySmall,
-                    color = BOARDING_PLATFORM_COLOR,
-                    modifier = Modifier.padding(top = 2.dp),
+                    color = ACTIVITY_DELAY_COLOR,
+                    textAlign = TextAlign.End,
                 )
             }
         }
-        Text(
-            text = departure.activityStatusLabel(
-                referenceNow = currentSystemTime,
-                showSeconds = showSecondsEnabled,
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -1126,7 +1151,7 @@ private fun DepartureDetailsScreen(
             )
             DetailValueRow(
                 label = "Boarding platform",
-                value = departure.boardingPlatformDisplayLabel ?: "--",
+                value = departure.boardingPlatformCompactLabel ?: "--",
                 valueColor = BOARDING_PLATFORM_COLOR,
             )
             DetailValueRow(

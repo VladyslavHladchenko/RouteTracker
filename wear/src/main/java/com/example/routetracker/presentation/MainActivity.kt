@@ -158,6 +158,21 @@ fun WearApp(routeRepo: RouteRepository) {
         isRefreshing = true
     }
 
+    fun dismissTripDetails() {
+        selectedDeparture = null
+        val activeRoute = navController.currentBackStackEntry?.destination?.route ?: currentScreenRoute
+        if (activeRoute != TRIP_DETAILS_ROUTE) {
+            return
+        }
+
+        navController.navigate(BOARD_ROUTE) {
+            launchSingleTop = true
+            popUpTo(BOARD_ROUTE) {
+                inclusive = false
+            }
+        }
+    }
+
     suspend fun loadSnapshot(forceRefresh: Boolean, requestSurfaceRefresh: Boolean) {
         isRefreshing = true
         try {
@@ -538,7 +553,7 @@ fun WearApp(routeRepo: RouteRepository) {
                     val departure = latestSelectedDeparture.value
                     if (departure == null) {
                         LaunchedEffect(Unit) {
-                            navController.popBackStack()
+                            dismissTripDetails()
                         }
                     } else {
                         val selectionForDetails = latestSelection.value
@@ -551,7 +566,7 @@ fun WearApp(routeRepo: RouteRepository) {
                             currentSystemTime = currentSystemTimeForDetails,
                             showSecondsEnabled = showSecondsForDetails,
                             onDismiss = {
-                                navController.popBackStack()
+                                dismissTripDetails()
                             },
                         )
                     }

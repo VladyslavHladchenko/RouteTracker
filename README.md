@@ -84,11 +84,12 @@ The watch settings currently expose:
 - `Show seconds`
 - `Details auto-refresh`
 - `Verified matches`
+- `Refresh stop catalog`
 - live snapshot cache
 - GTFS trip detail cache
 - vehicle position cache
 
-`Verified matches` controls how many confirmed direct departures the repository keeps scanning for before it stops verifying more live candidates. Current options are `1`, `3`, and `5`.
+`Verified matches` controls how many confirmed direct departures the repository keeps scanning for before it stops verifying more live candidates. The setting is adjusted directly on-watch and currently supports the range `1..10`.
 
 ## Route Model
 
@@ -350,7 +351,8 @@ The stop and line catalog is cached separately:
 - stored on disk in app-private storage
 - kept in memory after load
 - refreshed at most once per day
-- prefetched in the background when the activity starts
+- best-effort daily background refresh is scheduled around early morning
+- manual refresh is available from settings
 
 If refresh fails but a cached catalog exists, the app falls back to the cached catalog.
 

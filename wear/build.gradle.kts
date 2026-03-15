@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.androidx.wear.tooling.preview)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.splashscreen)
+    implementation("androidx.work:work-runtime-ktx:2.11.1")
     implementation(libs.androidx.tiles)
     implementation(libs.androidx.protolayout)
     implementation(libs.androidx.protolayout.material3)

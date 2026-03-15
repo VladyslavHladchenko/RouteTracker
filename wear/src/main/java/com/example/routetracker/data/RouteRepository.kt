@@ -100,7 +100,8 @@ class RouteRepository(private val context: Context) {
             CacheDurationOption(5_000L, "5 s"),
             CacheDurationOption(10_000L, "10 s"),
         )
-        private val VERIFIED_MATCH_COUNT_OPTIONS = listOf(1, 3, 5)
+        private const val MIN_VERIFIED_MATCH_COUNT = 1
+        private const val MAX_VERIFIED_MATCH_COUNT = 10
         private val snapshotLock = Any()
 
         @Volatile
@@ -287,16 +288,24 @@ class RouteRepository(private val context: Context) {
         return catalogRepository.getCatalog(forceRefresh = forceRefresh)
     }
 
+    fun refreshTransitCatalog(): TransitCatalog {
+        return catalogRepository.getCatalog(forceRefresh = true)
+    }
+
     fun getCachedTransitCatalog(): TransitCatalog? {
         return catalogRepository.getCachedCatalog()
     }
 
-    fun prefetchTransitCatalogIfNeeded() {
-        catalogRepository.prefetchIfNeeded()
-    }
-
     fun isTransitCatalogRefreshDue(): Boolean {
         return catalogRepository.isCatalogRefreshDue()
+    }
+
+    fun getTransitCatalogLastRefreshTime(): ZonedDateTime? {
+        return catalogRepository.getLastCatalogFetchedAt()
+    }
+
+    fun getTransitCatalogLastRefreshLabel(): String {
+        return getTransitCatalogLastRefreshTime()?.let(::formatStatusTime) ?: "Never"
     }
 
     fun searchStations(
@@ -347,8 +356,7 @@ class RouteRepository(private val context: Context) {
 
     fun getVerifiedMatchCount(): Int {
         return prefs.getInt(PREF_VERIFIED_MATCH_COUNT, DEFAULT_VERIFIED_MATCH_COUNT)
-            .takeIf { it in VERIFIED_MATCH_COUNT_OPTIONS }
-            ?: DEFAULT_VERIFIED_MATCH_COUNT
+            .coerceIn(MIN_VERIFIED_MATCH_COUNT, MAX_VERIFIED_MATCH_COUNT)
     }
 
     fun getLiveSnapshotCacheLabel(): String {
@@ -441,14 +449,9 @@ class RouteRepository(private val context: Context) {
         return nextValue
     }
 
-    fun cycleVerifiedMatchCount(): Int {
-        val currentValue = getVerifiedMatchCount()
-        val currentIndex = VERIFIED_MATCH_COUNT_OPTIONS.indexOf(currentValue)
-        val nextValue = if (currentIndex == -1) {
-            VERIFIED_MATCH_COUNT_OPTIONS.first()
-        } else {
-            VERIFIED_MATCH_COUNT_OPTIONS[(currentIndex + 1) % VERIFIED_MATCH_COUNT_OPTIONS.size]
-        }
+    fun adjustVerifiedMatchCount(delta: Int): Int {
+        val nextValue = (getVerifiedMatchCount() + delta)
+            .coerceIn(MIN_VERIFIED_MATCH_COUNT, MAX_VERIFIED_MATCH_COUNT)
         prefs.edit { putInt(PREF_VERIFIED_MATCH_COUNT, nextValue) }
         synchronized(snapshotLock) {
             cachedSnapshot = null

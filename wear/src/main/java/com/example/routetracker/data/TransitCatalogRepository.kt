@@ -13,6 +13,7 @@ private const val CATALOG_TAG = "TransitCatalogRepo"
 private const val GTFS_PAGE_LIMIT = 10_000
 private const val STATIC_CATALOG_TTL_HOURS = 24L
 private const val STATIC_CATALOG_FILE_NAME = "transit_catalog_v3.json"
+private const val STATIC_CATALOG_META_FILE_NAME = "transit_catalog_v3_meta.json"
 private val PRAGUE_ZONE: ZoneId = ZoneId.of("Europe/Prague")
 
 class TransitCatalogRepository(
@@ -53,6 +54,10 @@ class TransitCatalogRepository(
         return cachedCatalog ?: synchronized(this) {
             cachedCatalog ?: readCatalogFromDisk()?.also { cachedCatalog = it }
         }
+    }
+
+    fun getLastCatalogFetchedAt(): ZonedDateTime? {
+        return readCatalogMetadataFetchedAt() ?: getCachedCatalog()?.fetchedAt
     }
 
     fun prefetchIfNeeded() {
@@ -278,10 +283,34 @@ class TransitCatalogRepository(
         }
 
         catalogFile().writeText(json.toString())
+        catalogMetaFile().writeText(
+            JSONObject().apply {
+                put("fetchedAt", catalog.fetchedAt.toString())
+            }.toString()
+        )
     }
 
     private fun catalogFile(): File {
         return File(context.filesDir, STATIC_CATALOG_FILE_NAME)
+    }
+
+    private fun catalogMetaFile(): File {
+        return File(context.filesDir, STATIC_CATALOG_META_FILE_NAME)
+    }
+
+    private fun readCatalogMetadataFetchedAt(): ZonedDateTime? {
+        val metaFile = catalogMetaFile()
+        if (!metaFile.exists()) {
+            return null
+        }
+
+        return runCatching {
+            JSONObject(metaFile.readText()).getString("fetchedAt")
+        }.mapCatching(ZonedDateTime::parse)
+            .onFailure { error ->
+                Log.w(CATALOG_TAG, "Failed to read transit catalog metadata.", error)
+            }
+            .getOrNull()
     }
 
     private fun jsonStringList(array: JSONArray?): List<String> {

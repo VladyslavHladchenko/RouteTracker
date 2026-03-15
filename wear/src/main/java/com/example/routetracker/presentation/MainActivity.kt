@@ -87,7 +87,8 @@ fun WearApp(routeRepo: RouteRepository) {
     var autoUpdatesEnabled by remember { mutableStateOf(routeRepo.getAutoUpdatesEnabled()) }
     var showSecondsEnabled by remember { mutableStateOf(routeRepo.getShowSecondsEnabled()) }
     var detailsDialogAutoRefreshEnabled by remember { mutableStateOf(routeRepo.getDetailsDialogAutoRefreshEnabled()) }
-    var verifiedMatchCountLabel by remember { mutableStateOf(routeRepo.getVerifiedMatchCountLabel()) }
+    var verifiedMatchCount by remember { mutableStateOf(routeRepo.getVerifiedMatchCount()) }
+    var transitCatalogLastRefreshLabel by remember { mutableStateOf(routeRepo.getTransitCatalogLastRefreshLabel()) }
     var liveSnapshotCacheLabel by remember { mutableStateOf(routeRepo.getLiveSnapshotCacheLabel()) }
     var gtfsTripDetailCacheLabel by remember { mutableStateOf(routeRepo.getGtfsTripDetailCacheLabel()) }
     var vehiclePositionCacheLabel by remember { mutableStateOf(routeRepo.getVehiclePositionCacheLabel()) }
@@ -103,7 +104,8 @@ fun WearApp(routeRepo: RouteRepository) {
         autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
         showSecondsEnabled = routeRepo.getShowSecondsEnabled()
         detailsDialogAutoRefreshEnabled = routeRepo.getDetailsDialogAutoRefreshEnabled()
-        verifiedMatchCountLabel = routeRepo.getVerifiedMatchCountLabel()
+        verifiedMatchCount = routeRepo.getVerifiedMatchCount()
+        transitCatalogLastRefreshLabel = routeRepo.getTransitCatalogLastRefreshLabel()
         liveSnapshotCacheLabel = routeRepo.getLiveSnapshotCacheLabel()
         gtfsTripDetailCacheLabel = routeRepo.getGtfsTripDetailCacheLabel()
         vehiclePositionCacheLabel = routeRepo.getVehiclePositionCacheLabel()
@@ -210,19 +212,21 @@ fun WearApp(routeRepo: RouteRepository) {
         refreshSettingsState()
     }
 
-    suspend fun cycleVerifiedMatchCount() {
-        Log.d(TAG, "Cycling verified match count.")
+    suspend fun adjustVerifiedMatchCount(delta: Int) {
+        Log.d(TAG, "Adjusting verified match count by $delta.")
         withContext(Dispatchers.IO) {
-            routeRepo.cycleVerifiedMatchCount()
+            routeRepo.adjustVerifiedMatchCount(delta)
         }
         refreshSettingsState()
         loadSnapshot(forceRefresh = true, requestSurfaceRefresh = true)
     }
 
-    LaunchedEffect(routeRepo) {
+    suspend fun refreshTransitCatalog() {
+        Log.d(TAG, "Refreshing transit catalog from settings.")
         withContext(Dispatchers.IO) {
-            routeRepo.prefetchTransitCatalogIfNeeded()
+            routeRepo.refreshTransitCatalog()
         }
+        refreshSettingsState()
     }
 
     LaunchedEffect(routeRepo, autoUpdatesEnabled) {
@@ -303,7 +307,8 @@ fun WearApp(routeRepo: RouteRepository) {
             SettingsDialog(
                 showSecondsEnabled = showSecondsEnabled,
                 detailsDialogAutoRefreshEnabled = detailsDialogAutoRefreshEnabled,
-                verifiedMatchCountLabel = verifiedMatchCountLabel,
+                verifiedMatchCount = verifiedMatchCount,
+                transitCatalogLastRefreshLabel = transitCatalogLastRefreshLabel,
                 liveSnapshotCacheLabel = liveSnapshotCacheLabel,
                 gtfsTripDetailCacheLabel = gtfsTripDetailCacheLabel,
                 vehiclePositionCacheLabel = vehiclePositionCacheLabel,
@@ -322,9 +327,19 @@ fun WearApp(routeRepo: RouteRepository) {
                         cycleLiveSnapshotCache()
                     }
                 },
-                onCycleVerifiedMatchCount = {
+                onDecreaseVerifiedMatchCount = {
                     coroutineScope.launch {
-                        cycleVerifiedMatchCount()
+                        adjustVerifiedMatchCount(-1)
+                    }
+                },
+                onIncreaseVerifiedMatchCount = {
+                    coroutineScope.launch {
+                        adjustVerifiedMatchCount(1)
+                    }
+                },
+                onRefreshTransitCatalog = {
+                    coroutineScope.launch {
+                        refreshTransitCatalog()
                     }
                 },
                 onCycleGtfsTripDetailCache = {
@@ -556,13 +571,16 @@ private fun ActivityClockChip(
 private fun SettingsDialog(
     showSecondsEnabled: Boolean,
     detailsDialogAutoRefreshEnabled: Boolean,
-    verifiedMatchCountLabel: String,
+    verifiedMatchCount: Int,
+    transitCatalogLastRefreshLabel: String,
     liveSnapshotCacheLabel: String,
     gtfsTripDetailCacheLabel: String,
     vehiclePositionCacheLabel: String,
     onToggleShowSeconds: () -> Unit,
     onToggleDetailsDialogAutoRefresh: () -> Unit,
-    onCycleVerifiedMatchCount: () -> Unit,
+    onDecreaseVerifiedMatchCount: () -> Unit,
+    onIncreaseVerifiedMatchCount: () -> Unit,
+    onRefreshTransitCatalog: () -> Unit,
     onCycleLiveSnapshotCache: () -> Unit,
     onCycleGtfsTripDetailCache: () -> Unit,
     onCycleVehiclePositionCache: () -> Unit,
@@ -650,7 +668,7 @@ private fun SettingsDialog(
                 textAlign = TextAlign.Center,
             )
             Button(
-                onClick = onCycleVerifiedMatchCount,
+                onClick = onRefreshTransitCatalog,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 10.dp),
@@ -659,7 +677,50 @@ private fun SettingsDialog(
                     contentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             ) {
-                Text("Verified matches: $verifiedMatchCountLabel")
+                Text("Refresh stop catalog")
+            }
+            Text(
+                text = "Catalog: $transitCatalogLastRefreshLabel",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                textAlign = TextAlign.Center,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(
+                    onClick = onDecreaseVerifiedMatchCount,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                ) {
+                    Text("-")
+                }
+                Text(
+                    text = "Verified matches: $verifiedMatchCount",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(2f),
+                    textAlign = TextAlign.Center,
+                )
+                Button(
+                    onClick = onIncreaseVerifiedMatchCount,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                ) {
+                    Text("+")
+                }
             }
             Text(
                 text = "Cache",

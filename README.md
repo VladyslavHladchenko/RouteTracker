@@ -28,7 +28,7 @@ The activity opens on the live departures board.
 Visible immediately:
 
 - current system clock on the curved left edge
-- selected route header
+- selected route header, which also opens route setup
 - next direct departures
 - refresh button
 
@@ -36,7 +36,6 @@ Above the main board, available by swiping down:
 
 - settings button
 - auto-updates toggle
-- route setup launcher
 
 ### Route Setup
 

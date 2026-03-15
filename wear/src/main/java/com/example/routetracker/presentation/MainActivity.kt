@@ -63,7 +63,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "RouteTrackerUi"
-private const val MAIN_SCREEN_INDEX = 4
+private const val MAIN_SCREEN_INDEX = 3
 private const val INITIAL_ACTIVITY_CENTER_INDEX = MAIN_SCREEN_INDEX + 1
 private const val HALF_MINUTE_MILLIS = 30_000L
 private val PREVIEW_UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -391,17 +391,6 @@ fun WearApp(routeRepo: RouteRepository) {
                 }
 
                 item {
-                    RouteLauncherCard(
-                        currentSelection = currentSelection,
-                        favoriteCount = favoriteRoutes.size,
-                        onOpenRouteSetup = {
-                            Log.d(TAG, "Route setup launcher tapped.")
-                            isRouteSetupOpen = true
-                        },
-                    )
-                }
-
-                item {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -413,6 +402,10 @@ fun WearApp(routeRepo: RouteRepository) {
                     HeaderCard(
                         selection = currentSelection,
                         statusText = statusText,
+                        onOpenRouteSetup = {
+                            Log.d(TAG, "Header route launcher tapped.")
+                            isRouteSetupOpen = true
+                        },
                     )
                 }
 
@@ -796,6 +789,7 @@ private fun formatActivityClock(
 private fun HeaderCard(
     selection: RouteSelection,
     statusText: String,
+    onOpenRouteSetup: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -805,6 +799,7 @@ private fun HeaderCard(
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 shape = RoundedCornerShape(24.dp),
             )
+            .clickable(onClick = onOpenRouteSetup)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -828,54 +823,13 @@ private fun HeaderCard(
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
         )
-    }
-}
-
-@Composable
-private fun RouteLauncherCard(
-    currentSelection: RouteSelection,
-    favoriteCount: Int,
-    onOpenRouteSetup: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                shape = RoundedCornerShape(24.dp),
-            )
-            .padding(8.dp),
-    ) {
         Text(
-            text = "Route",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-        )
-        Button(
-            onClick = onOpenRouteSetup,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp),
-            colors = ButtonDefaults.filledTonalButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        ) {
-            Text(currentSelection.routeSummaryWithPlatforms)
-        }
-        Text(
-            text = if (favoriteCount == 0) {
-                currentSelection.line?.displayLabel ?: "Any line"
-            } else {
-                "$favoriteCount favorite routes"
-            },
+            text = "Tap to change route",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 6.dp),
+                .padding(top = 4.dp),
             textAlign = TextAlign.Center,
         )
     }
@@ -1213,13 +1167,6 @@ fun DefaultPreview() {
                 )
             }
             item {
-                RouteLauncherCard(
-                    currentSelection = previewSnapshot.selection,
-                    favoriteCount = 2,
-                    onOpenRouteSetup = {},
-                )
-            }
-            item {
                 HeaderCard(
                     selection = previewSnapshot.selection,
                     statusText = snapshotStatusText(
@@ -1229,6 +1176,7 @@ fun DefaultPreview() {
                         hasDepartures = previewSnapshot.departures.isNotEmpty(),
                         updatedLabel = previewSnapshot.fetchedAt.format(PREVIEW_UPDATE_TIME_FORMATTER),
                     ),
+                    onOpenRouteSetup = {},
                 )
             }
             items(previewSnapshot.departures.size) { index ->

@@ -23,6 +23,10 @@ class TransitCatalogRepository(
     @Volatile
     private var cachedCatalog: TransitCatalog? = null
 
+    fun peekMemoryCatalog(): TransitCatalog? {
+        return cachedCatalog
+    }
+
     fun getCatalog(forceRefresh: Boolean = false): TransitCatalog {
         synchronized(this) {
             val diskCatalog = cachedCatalog ?: readCatalogFromDisk()?.also { cachedCatalog = it }

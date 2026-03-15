@@ -292,6 +292,10 @@ class RouteRepository(private val context: Context) {
         return catalogRepository.getCatalog(forceRefresh = true)
     }
 
+    fun peekTransitCatalogInMemory(): TransitCatalog? {
+        return catalogRepository.peekMemoryCatalog()
+    }
+
     fun getCachedTransitCatalog(): TransitCatalog? {
         return catalogRepository.getCachedCatalog()
     }

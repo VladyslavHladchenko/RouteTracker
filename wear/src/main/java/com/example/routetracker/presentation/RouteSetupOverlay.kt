@@ -79,7 +79,8 @@ internal fun RouteSetupScreen(
     var page by remember(currentSelection.stableKey) { mutableStateOf<RouteSetupPage>(RouteSetupPage.Home) }
     var draftSelection by remember(currentSelection.stableKey) { mutableStateOf(currentSelection) }
     var localFavorites by remember(favoriteRoutes) { mutableStateOf(favoriteRoutes) }
-    var catalog by remember { mutableStateOf(routeRepo.getCachedTransitCatalog()) }
+    // Use the in-memory catalog immediately when available; disk/network loading happens off the UI thread below.
+    var catalog by remember { mutableStateOf(routeRepo.peekTransitCatalogInMemory()) }
     var isCatalogLoading by remember { mutableStateOf(catalog == null) }
     var catalogError by remember { mutableStateOf<String?>(null) }
     var stationQuery by remember { mutableStateOf("") }
@@ -110,8 +111,21 @@ internal fun RouteSetupScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (catalog == null || routeRepo.isTransitCatalogRefreshDue()) {
-            loadCatalog(forceRefresh = catalog != null)
+        val initialCatalog = routeRepo.peekTransitCatalogInMemory() ?: withContext(Dispatchers.IO) {
+            routeRepo.getCachedTransitCatalog()
+        }
+        if (initialCatalog != null) {
+            catalog = initialCatalog
+            catalogError = null
+            isCatalogLoading = false
+            val refreshDue = withContext(Dispatchers.IO) {
+                routeRepo.isTransitCatalogRefreshDue()
+            }
+            if (refreshDue) {
+                loadCatalog(forceRefresh = true)
+            }
+        } else {
+            loadCatalog(forceRefresh = false)
         }
     }
 

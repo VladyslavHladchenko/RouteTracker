@@ -499,7 +499,6 @@ fun WearApp(routeRepo: RouteRepository) {
                     DisposableEffect(Unit) {
                         onDispose {
                             refreshRouteState()
-                            routeRepo.clearTransitCatalogMemoryCache()
                         }
                     }
                     val selectionForRouteSetup = latestSelection.value

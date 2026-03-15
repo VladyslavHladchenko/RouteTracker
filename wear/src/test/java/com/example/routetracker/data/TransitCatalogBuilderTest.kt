@@ -133,6 +133,8 @@ class TransitCatalogBuilderTest {
         assertEquals("Palmovka", palmovka!!.stationName)
         assertEquals("parent:U529S1", palmovka.stationKey)
         assertEquals(listOf("1", "2"), palmovka.platforms.map { it.platformKey })
+        assertEquals("Platforms 1, 2", palmovka.anyPlatformSubtitle)
+        assertEquals(listOf("U529Z101P", "U529Z102P"), palmovka.resolveSelection(platformKey = null).stopIds)
     }
 
     @Test

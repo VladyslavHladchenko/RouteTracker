@@ -29,6 +29,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -74,6 +75,7 @@ private const val BOARD_ROUTE = "board"
 private const val SETTINGS_ROUTE = "settings"
 private const val ROUTE_SETUP_ROUTE = "route_setup"
 private const val TRIP_DETAILS_ROUTE = "trip_details"
+private val BOARDING_PLATFORM_COLOR = Color(0xFF70D38A)
 private val PREVIEW_UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val ACTIVITY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val ACTIVITY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
@@ -640,7 +642,7 @@ private fun BoardScreen(
             if (departures.isNotEmpty()) {
                 items(
                     items = departures,
-                    key = { departure -> departure.tripId },
+                    key = { departure -> departure.rowKey },
                 ) { departure ->
                     DepartureRow(
                         selection = selection,
@@ -1048,6 +1050,16 @@ private fun DepartureRow(
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary,
         )
+        if (selection.origin.platformKey == null) {
+            departure.boardingPlatformDisplayLabel?.let { boardingPlatformLabel ->
+                Text(
+                    text = boardingPlatformLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BOARDING_PLATFORM_COLOR,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
         Text(
             text = departure.activityStatusLabel(
                 referenceNow = currentSystemTime,
@@ -1111,6 +1123,11 @@ private fun DepartureDetailsScreen(
             DetailValueRow(
                 label = "Line",
                 value = departure.lineLabel,
+            )
+            DetailValueRow(
+                label = "Boarding platform",
+                value = departure.boardingPlatformDisplayLabel ?: "--",
+                valueColor = BOARDING_PLATFORM_COLOR,
             )
             DetailValueRow(
                 label = "Destination arrival",
@@ -1193,6 +1210,7 @@ private fun DetailSectionTitle(
 private fun DetailValueRow(
     label: String,
     value: String,
+    valueColor: Color? = null,
 ) {
     Column(
         modifier = Modifier
@@ -1212,7 +1230,7 @@ private fun DetailValueRow(
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = valueColor ?: MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(top = 2.dp),
         )
     }

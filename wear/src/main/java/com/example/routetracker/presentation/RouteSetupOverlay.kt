@@ -38,6 +38,7 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.example.routetracker.data.formatBoardingStopCount
 import com.example.routetracker.data.LineOption
 import com.example.routetracker.data.LineSelection
 import com.example.routetracker.data.RouteRepository
@@ -544,14 +545,14 @@ private fun RoutePlatformPickerPage(
 
     SuggestionCard(
         title = "Any platform",
-        subtitle = "${station.stopIds.size} stop IDs",
+        subtitle = station.anyPlatformSubtitle,
         topPadding = 10.dp,
         onClick = { onSelectPlatform(null) },
     )
     station.platforms.forEach { platform ->
         SuggestionCard(
             title = platform.label,
-            subtitle = "${platform.stopIds.size} stop IDs",
+            subtitle = formatBoardingStopCount(platform.stopIds.size),
             onClick = { onSelectPlatform(platform.platformKey) },
         )
     }

@@ -51,6 +51,12 @@ Above the main board, available by swiping down:
 - settings button
 - auto-updates toggle
 
+Platform-aware departures:
+
+- if origin is set to `Any platform`, the departures list can show the same trip more than once when it is boardable from different origin platforms within the selected station
+- those rows now show the matched boarding platform as a green label
+- trip details also show a dedicated `Boarding platform` field
+
 ### Route Setup
 
 The route setup screen is the main configuration flow for the watch.
@@ -252,6 +258,12 @@ Important detail:
 
 - when `Any platform` is selected, `ids[]` contains all stop IDs for the station
 - when a platform is selected, `ids[]` contains only that platform's stop IDs
+
+Platform-aware matching detail:
+
+- broad stations like `Palmovka` can contain multiple boardable stop IDs for one public station name
+- the same GTFS trip can therefore appear more than once in the departure board feed, once per matched origin stop/platform
+- the app keeps separate rows for distinct `tripId + boarded stop` combinations so the user can see all valid boarding platforms
 
 Fields used from each `departures[]` item:
 

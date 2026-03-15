@@ -27,8 +27,19 @@ data class StationOption(
             }
         }
 
+    val anyPlatformSubtitle: String
+        get() = if (platforms.isEmpty()) {
+            formatBoardingStopCount(stopIds.size)
+        } else {
+            searchSubtitle
+        }
+
     fun matches(query: String): Int? {
         return SearchRanking.score(query, normalizedSearchText)
+    }
+
+    fun platformLabelForStop(stopId: String): String? {
+        return platforms.firstOrNull { platform -> stopId in platform.stopIds }?.label
     }
 
     fun resolveSelection(platformKey: String?): StopSelection {
@@ -38,8 +49,21 @@ data class StationOption(
             stationName = stationName,
             platformKey = selectedPlatform?.platformKey,
             platformLabel = selectedPlatform?.label,
-            stopIds = selectedPlatform?.stopIds ?: stopIds,
+            stopIds = selectedPlatform?.stopIds ?: anyPlatformStopIds(),
         )
+    }
+
+    private fun anyPlatformStopIds(): List<String> {
+        if (platforms.isEmpty()) {
+            return stopIds
+        }
+
+        return platforms
+            .asSequence()
+            .flatMap { platform -> platform.stopIds.asSequence() }
+            .distinct()
+            .sorted()
+            .toList()
     }
 
     companion object {
@@ -64,6 +88,13 @@ data class StationOption(
                 normalizedSearchText = SearchNormalizer.normalize(searchText),
             )
         }
+    }
+}
+
+internal fun formatBoardingStopCount(count: Int): String {
+    return when (count) {
+        1 -> "1 boarding stop"
+        else -> "$count boarding stops"
     }
 }
 

@@ -669,6 +669,7 @@ class RouteRepository(private val context: Context) {
         val boardPayload = fetchDepartureBoard(deviceNow, boardLimit, sourceStopIds)
         val departures = boardPayload.optJSONArray("departures") ?: JSONArray()
         val matches = mutableListOf<RouteDeparture>()
+        val acceptedDepartureKeys = mutableSetOf<String>()
 
         var skippedWrongLine = 0
         var skippedWrongStop = 0
@@ -677,6 +678,7 @@ class RouteRepository(private val context: Context) {
         var skippedMissingBoardingIndex = 0
         var skippedMissingDestination = 0
         var skippedCanceled = 0
+        var skippedDuplicateBoarding = 0
 
         for (index in 0 until departures.length()) {
             val departure = departures.optJSONObject(index) ?: continue
@@ -767,10 +769,16 @@ class RouteRepository(private val context: Context) {
                 serviceDayAnchor = boardStopTime.scheduledTime,
                 delaySeconds = resolvedTiming.delaySeconds,
             )
+            val boardedPlatformLabel = resolveBoardedPlatformLabel(
+                originSelection = selection.origin,
+                boardedStopId = boardedStopId,
+            )
             val matchedDeparture = resolvedTiming.toRouteDeparture(
                 tripId = tripId,
                 lineShortName = routeShortName.ifBlank { selectedLine ?: "?" },
                 referenceNow = deviceNow,
+                boardedStopId = boardedStopId,
+                boardedPlatformLabel = boardedPlatformLabel,
                 departureBoardDetails = DepartureBoardDetails(
                     departureTime = boardStopTime,
                     originArrivalTime = boardArrivalTime,
@@ -786,6 +794,11 @@ class RouteRepository(private val context: Context) {
                 },
                 destinationArrivalTime = destinationArrivalTime,
             )
+            val acceptedDepartureKey = "$tripId|$boardedStopId"
+            if (!acceptedDepartureKeys.add(acceptedDepartureKey)) {
+                skippedDuplicateBoarding += 1
+                continue
+            }
             matches += matchedDeparture
             Log.d(
                 TAG,
@@ -803,7 +816,7 @@ class RouteRepository(private val context: Context) {
                 "skippedWrongLine=$skippedWrongLine skippedWrongStop=$skippedWrongStop " +
                 "skippedMissingTime=$skippedMissingTime skippedMissingTripId=$skippedMissingTripId " +
                 "skippedMissingBoardingIndex=$skippedMissingBoardingIndex skippedMissingDestination=$skippedMissingDestination " +
-                "skippedCanceled=$skippedCanceled",
+                "skippedCanceled=$skippedCanceled skippedDuplicateBoarding=$skippedDuplicateBoarding",
         )
         return DepartureQueryResult(
             departures = matches.sortedBy { it.departureTime }.take(maxResults),
@@ -1020,6 +1033,17 @@ class RouteRepository(private val context: Context) {
             .plusSeconds(delaySeconds.toLong())
     }
 
+    private fun resolveBoardedPlatformLabel(
+        originSelection: StopSelection,
+        boardedStopId: String,
+    ): String? {
+        originSelection.platformLabel?.takeIf { it.isNotBlank() }?.let { return it }
+
+        val catalog = catalogRepository.peekMemoryCatalog() ?: catalogRepository.getCachedCatalog()
+        val station = catalog?.stationByKey(originSelection.stationKey) ?: return null
+        return station.platformLabelForStop(boardedStopId)
+    }
+
     private fun combineServiceTime(
         anchor: ZonedDateTime,
         hhmmss: String,
@@ -1214,10 +1238,15 @@ data class RouteDeparture(
     val departureTime: ZonedDateTime,
     val countdownMinutes: Int,
     val delayMinutes: Int,
+    val boardedStopId: String? = null,
+    val boardedPlatformLabel: String? = null,
     val departureBoardDetails: DepartureBoardDetails,
     val vehiclePositionDetails: VehiclePositionDetails?,
     val destinationArrivalTime: ZonedDateTime?,
 ) {
+    val rowKey: String
+        get() = "$tripId@${boardedStopId ?: "*"}@${departureTime.toInstant().toEpochMilli()}"
+
     val compactLabel: String
         get() = "$lineShortName:$countdownMinutes [${delayMinutes.formatDelay()}]"
 
@@ -1236,6 +1265,9 @@ data class RouteDeparture(
 
     val delayBadgeLabel: String?
         get() = delayMinutes.takeIf { it > 0 }?.let { "+$it" }
+
+    val boardingPlatformDisplayLabel: String?
+        get() = boardedPlatformLabel?.takeIf { it.isNotBlank() } ?: boardedStopId?.takeIf { it.isNotBlank() }
 
     val detailStatusLabel: String
         get() = buildString {

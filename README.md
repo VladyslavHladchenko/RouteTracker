@@ -77,6 +77,19 @@ Current behavior:
 - favorites are de-duplicated by origin, destination, platform filters, and line
 - favorites are capped at `8`
 
+### Settings
+
+The watch settings currently expose:
+
+- `Show seconds`
+- `Details auto-refresh`
+- `Verified matches`
+- live snapshot cache
+- GTFS trip detail cache
+- vehicle position cache
+
+`Verified matches` controls how many confirmed direct departures the repository keeps scanning for before it stops verifying more live candidates. Current options are `1`, `3`, and `5`.
+
 ## Route Model
 
 The persisted route configuration is `RouteSelection`:
@@ -215,6 +228,12 @@ Request pattern:
 - `limit`
 - `order=real`
 
+Current candidate limit behavior:
+
+- the repository asks for `max(50, verifiedMatches * 12)` board rows
+- that limit is shared across all selected origin stop IDs
+- at very busy interchanges, valid direct trips can still sit beyond that initial board window
+
 Important detail:
 
 - when `Any platform` is selected, `ids[]` contains all stop IDs for the station
@@ -237,6 +256,7 @@ How the app uses them:
 - line filter is applied only when a line is configured
 - otherwise all direct candidate departures are allowed through
 - timestamp fields are sanitized before parsing so API `"null"` values do not crash the live board
+- departures are processed one by one in board order until the configured verified-match count is reached
 
 ### Trip Verification: `/v2/gtfs/trips/{id}`
 
@@ -262,6 +282,12 @@ How it works:
 1. find the boarded source stop occurrence in `stop_times[]`
 2. search only later stops
 3. accept the trip if any downstream `stop_id` matches the selected destination stop set
+
+Important runtime detail:
+
+- trip detail is fetched lazily per candidate departure
+- the app does not fetch all trip details first and filter later
+- lowering the `Verified matches` setting lowers the number of GTFS trip-detail requests in the common case
 
 Destination matching behavior:
 
@@ -328,6 +354,8 @@ The stop and line catalog is cached separately:
 
 If refresh fails but a cached catalog exists, the app falls back to the cached catalog.
 
+There is no exact midnight background refresh job today. A background-only once-per-day refresh is possible, but on Android/Wear OS it would be best-effort rather than a guaranteed `00:00` run unless the app used exact alarms.
+
 ## Refresh Behavior
 
 - activity auto-refresh: aligned to wall-clock `:00` and `:30`
@@ -347,7 +375,7 @@ Two complication providers are exposed:
 Both are timeline-based:
 
 - countdown keeps moving locally between provider calls
-- future handoff points for departures `2` and `3` are preloaded
+- future handoff points for later departures are preloaded
 - stale dot appears after `30 s` without fresh data
 
 Stale means:
@@ -363,7 +391,7 @@ The tile shows:
 
 - destination on top
 - configured line or `Any direct line`
-- next `3` departures
+- next configured number of verified departures
 
 When the route is `Any line`, each row includes the live line short name.
 

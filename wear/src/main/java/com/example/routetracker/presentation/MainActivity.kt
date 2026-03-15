@@ -87,6 +87,7 @@ fun WearApp(routeRepo: RouteRepository) {
     var autoUpdatesEnabled by remember { mutableStateOf(routeRepo.getAutoUpdatesEnabled()) }
     var showSecondsEnabled by remember { mutableStateOf(routeRepo.getShowSecondsEnabled()) }
     var detailsDialogAutoRefreshEnabled by remember { mutableStateOf(routeRepo.getDetailsDialogAutoRefreshEnabled()) }
+    var verifiedMatchCountLabel by remember { mutableStateOf(routeRepo.getVerifiedMatchCountLabel()) }
     var liveSnapshotCacheLabel by remember { mutableStateOf(routeRepo.getLiveSnapshotCacheLabel()) }
     var gtfsTripDetailCacheLabel by remember { mutableStateOf(routeRepo.getGtfsTripDetailCacheLabel()) }
     var vehiclePositionCacheLabel by remember { mutableStateOf(routeRepo.getVehiclePositionCacheLabel()) }
@@ -102,6 +103,7 @@ fun WearApp(routeRepo: RouteRepository) {
         autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
         showSecondsEnabled = routeRepo.getShowSecondsEnabled()
         detailsDialogAutoRefreshEnabled = routeRepo.getDetailsDialogAutoRefreshEnabled()
+        verifiedMatchCountLabel = routeRepo.getVerifiedMatchCountLabel()
         liveSnapshotCacheLabel = routeRepo.getLiveSnapshotCacheLabel()
         gtfsTripDetailCacheLabel = routeRepo.getGtfsTripDetailCacheLabel()
         vehiclePositionCacheLabel = routeRepo.getVehiclePositionCacheLabel()
@@ -208,6 +210,15 @@ fun WearApp(routeRepo: RouteRepository) {
         refreshSettingsState()
     }
 
+    suspend fun cycleVerifiedMatchCount() {
+        Log.d(TAG, "Cycling verified match count.")
+        withContext(Dispatchers.IO) {
+            routeRepo.cycleVerifiedMatchCount()
+        }
+        refreshSettingsState()
+        loadSnapshot(forceRefresh = true, requestSurfaceRefresh = true)
+    }
+
     LaunchedEffect(routeRepo) {
         withContext(Dispatchers.IO) {
             routeRepo.prefetchTransitCatalogIfNeeded()
@@ -292,6 +303,7 @@ fun WearApp(routeRepo: RouteRepository) {
             SettingsDialog(
                 showSecondsEnabled = showSecondsEnabled,
                 detailsDialogAutoRefreshEnabled = detailsDialogAutoRefreshEnabled,
+                verifiedMatchCountLabel = verifiedMatchCountLabel,
                 liveSnapshotCacheLabel = liveSnapshotCacheLabel,
                 gtfsTripDetailCacheLabel = gtfsTripDetailCacheLabel,
                 vehiclePositionCacheLabel = vehiclePositionCacheLabel,
@@ -308,6 +320,11 @@ fun WearApp(routeRepo: RouteRepository) {
                 onCycleLiveSnapshotCache = {
                     coroutineScope.launch {
                         cycleLiveSnapshotCache()
+                    }
+                },
+                onCycleVerifiedMatchCount = {
+                    coroutineScope.launch {
+                        cycleVerifiedMatchCount()
                     }
                 },
                 onCycleGtfsTripDetailCache = {
@@ -539,11 +556,13 @@ private fun ActivityClockChip(
 private fun SettingsDialog(
     showSecondsEnabled: Boolean,
     detailsDialogAutoRefreshEnabled: Boolean,
+    verifiedMatchCountLabel: String,
     liveSnapshotCacheLabel: String,
     gtfsTripDetailCacheLabel: String,
     vehiclePositionCacheLabel: String,
     onToggleShowSeconds: () -> Unit,
     onToggleDetailsDialogAutoRefresh: () -> Unit,
+    onCycleVerifiedMatchCount: () -> Unit,
     onCycleLiveSnapshotCache: () -> Unit,
     onCycleGtfsTripDetailCache: () -> Unit,
     onCycleVehiclePositionCache: () -> Unit,
@@ -620,6 +639,27 @@ private fun SettingsDialog(
                         "Details auto-refresh: Off"
                     }
                 )
+            }
+            Text(
+                text = "Live query",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                textAlign = TextAlign.Center,
+            )
+            Button(
+                onClick = onCycleVerifiedMatchCount,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            ) {
+                Text("Verified matches: $verifiedMatchCountLabel")
             }
             Text(
                 text = "Cache",

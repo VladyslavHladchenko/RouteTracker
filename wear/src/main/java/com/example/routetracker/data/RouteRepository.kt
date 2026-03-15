@@ -34,6 +34,7 @@ private const val PREF_DETAILS_DIALOG_AUTO_REFRESH_ENABLED = "details_dialog_aut
 private const val PREF_LIVE_SNAPSHOT_CACHE_MILLIS = "live_snapshot_cache_millis"
 private const val PREF_GTFS_TRIP_DETAIL_CACHE_MILLIS = "gtfs_trip_detail_cache_millis"
 private const val PREF_VEHICLE_POSITION_CACHE_MILLIS = "vehicle_position_cache_millis"
+private const val PREF_VERIFIED_MATCH_COUNT = "verified_match_count"
 
 private val DISPLAY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DISPLAY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
@@ -79,7 +80,7 @@ class RouteRepository(private val context: Context) {
         private const val MAX_FAVORITES = 8
         const val DETAILS_DIALOG_REFRESH_INTERVAL_MILLIS = 10_000L
         const val LINE_NAME = "7"
-        const val MAX_RESULTS = 3
+        const val DEFAULT_VERIFIED_MATCH_COUNT = 3
 
         private val LIVE_SNAPSHOT_CACHE_OPTIONS = listOf(
             CacheDurationOption(0L, "Off"),
@@ -99,6 +100,7 @@ class RouteRepository(private val context: Context) {
             CacheDurationOption(5_000L, "5 s"),
             CacheDurationOption(10_000L, "10 s"),
         )
+        private val VERIFIED_MATCH_COUNT_OPTIONS = listOf(1, 3, 5)
         private val snapshotLock = Any()
 
         @Volatile
@@ -177,6 +179,7 @@ class RouteRepository(private val context: Context) {
                     ),
                 ),
                 fetchedAt = now,
+                requestedMatchCount = DEFAULT_VERIFIED_MATCH_COUNT,
             )
         }
 
@@ -342,6 +345,12 @@ class RouteRepository(private val context: Context) {
         return prefs.getLong(PREF_VEHICLE_POSITION_CACHE_MILLIS, DEFAULT_VEHICLE_POSITION_CACHE_MILLIS)
     }
 
+    fun getVerifiedMatchCount(): Int {
+        return prefs.getInt(PREF_VERIFIED_MATCH_COUNT, DEFAULT_VERIFIED_MATCH_COUNT)
+            .takeIf { it in VERIFIED_MATCH_COUNT_OPTIONS }
+            ?: DEFAULT_VERIFIED_MATCH_COUNT
+    }
+
     fun getLiveSnapshotCacheLabel(): String {
         return cacheDurationLabel(getLiveSnapshotCacheMillis())
     }
@@ -352,6 +361,10 @@ class RouteRepository(private val context: Context) {
 
     fun getVehiclePositionCacheLabel(): String {
         return cacheDurationLabel(getVehiclePositionCacheMillis())
+    }
+
+    fun getVerifiedMatchCountLabel(): String {
+        return getVerifiedMatchCount().toString()
     }
 
     fun setAutoUpdatesEnabled(enabled: Boolean) {
@@ -428,13 +441,33 @@ class RouteRepository(private val context: Context) {
         return nextValue
     }
 
+    fun cycleVerifiedMatchCount(): Int {
+        val currentValue = getVerifiedMatchCount()
+        val currentIndex = VERIFIED_MATCH_COUNT_OPTIONS.indexOf(currentValue)
+        val nextValue = if (currentIndex == -1) {
+            VERIFIED_MATCH_COUNT_OPTIONS.first()
+        } else {
+            VERIFIED_MATCH_COUNT_OPTIONS[(currentIndex + 1) % VERIFIED_MATCH_COUNT_OPTIONS.size]
+        }
+        prefs.edit { putInt(PREF_VERIFIED_MATCH_COUNT, nextValue) }
+        synchronized(snapshotLock) {
+            cachedSnapshot = null
+            cacheTimestampElapsedRealtime = 0L
+        }
+        Log.d(TAG, "Verified match count changed to $nextValue")
+        requestSurfaceRefresh()
+        return nextValue
+    }
+
     fun getDepartureSnapshot(forceRefresh: Boolean = false): DepartureSnapshot {
         val selection = getCurrentRouteSelection()
+        val verifiedMatchCount = getVerifiedMatchCount()
         if (selection.origin.stopIds.isEmpty() || selection.destination.stopIds.isEmpty()) {
             return DepartureSnapshot(
                 selection = selection,
                 departures = emptyList(),
                 fetchedAt = ZonedDateTime.now(PRAGUE_ZONE),
+                requestedMatchCount = verifiedMatchCount,
                 isStale = true,
                 errorMessage = "Set route first.",
             )
@@ -497,6 +530,7 @@ class RouteRepository(private val context: Context) {
                     selection = selection,
                     departures = emptyList(),
                     fetchedAt = ZonedDateTime.now(PRAGUE_ZONE),
+                    requestedMatchCount = verifiedMatchCount,
                     isStale = true,
                     errorMessage = "Unable to load live departures.",
                 )
@@ -586,28 +620,37 @@ class RouteRepository(private val context: Context) {
             selection = selection,
             departures = emptyList(),
             fetchedAt = ZonedDateTime.now(PRAGUE_ZONE),
+            requestedMatchCount = getVerifiedMatchCount(),
             isStale = true,
             errorMessage = "Updates paused.",
         )
     }
 
     private fun fetchDepartureSnapshot(selection: RouteSelection): DepartureSnapshot {
-        val departureResult = fetchDirectDepartures(selection)
+        val requestedMatchCount = getVerifiedMatchCount()
+        val departureResult = fetchDirectDepartures(
+            selection = selection,
+            maxResults = requestedMatchCount,
+        )
         val snapshot = DepartureSnapshot(
             selection = selection,
             departures = departureResult.departures,
             fetchedAt = departureResult.referenceNow,
+            requestedMatchCount = requestedMatchCount,
         )
         Log.d(TAG, "Fetched snapshot summary: ${snapshot.debugSummary()}")
         return snapshot
     }
 
-    private fun fetchDirectDepartures(selection: RouteSelection): DepartureQueryResult {
+    private fun fetchDirectDepartures(
+        selection: RouteSelection,
+        maxResults: Int,
+    ): DepartureQueryResult {
         // A route selection can represent one platform or an entire station on each end.
         // We therefore query all selected source stop IDs together, then verify direct
         // reachability against the selected destination stop set trip-by-trip.
         val deviceNow = ZonedDateTime.now(PRAGUE_ZONE)
-        val boardLimit = max(50, MAX_RESULTS * 12)
+        val boardLimit = max(50, maxResults * 12)
         val sourceStopIds = selection.origin.stopIds.distinct().sorted()
         val destinationStopIds = selection.destination.stopIds.toSet()
         val sourceStopIdSet = sourceStopIds.toSet()
@@ -738,7 +781,7 @@ class RouteRepository(private val context: Context) {
                 "Accepted departure: route=${selection.routeSummaryWithPlatforms} tripId=$tripId line=${matchedDeparture.lineShortName} label=${matchedDeparture.compactLabel} at ${matchedDeparture.departureTime}",
             )
 
-            if (matches.size >= MAX_RESULTS) {
+            if (matches.size >= maxResults) {
                 break
             }
         }
@@ -752,7 +795,7 @@ class RouteRepository(private val context: Context) {
                 "skippedCanceled=$skippedCanceled",
         )
         return DepartureQueryResult(
-            departures = matches.sortedBy { it.departureTime }.take(MAX_RESULTS),
+            departures = matches.sortedBy { it.departureTime }.take(maxResults),
             referenceNow = deviceNow,
         )
     }
@@ -1274,19 +1317,20 @@ data class DepartureSnapshot(
     val selection: RouteSelection,
     val departures: List<RouteDeparture>,
     val fetchedAt: ZonedDateTime,
+    val requestedMatchCount: Int = RouteRepository.DEFAULT_VERIFIED_MATCH_COUNT,
     val isStale: Boolean = false,
     val errorMessage: String? = null,
 ) {
     fun tileLines(showSeconds: Boolean = false): List<String> {
         val includeLine = !selection.usesFixedLine()
         val liveLines = departures
-            .take(RouteRepository.MAX_RESULTS)
+            .take(requestedMatchCount)
             .map { it.tileLineLabel(showSeconds, includeLine) }
         return if (liveLines.isNotEmpty()) {
             liveLines
         } else {
             val placeholderPrefix = if (includeLine) "--  " else ""
-            List(RouteRepository.MAX_RESULTS) {
+            List(requestedMatchCount) {
                 if (showSeconds) {
                     "$placeholderPrefix--:--:--  -- min"
                 } else {

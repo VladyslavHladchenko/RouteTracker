@@ -95,11 +95,19 @@ private fun MaterialScope.stackedDepartureLines(
     snapshot: DepartureSnapshot,
     showSecondsEnabled: Boolean,
 ): LayoutElementBuilders.LayoutElement {
+    val title = snapshot.selection.destination.stationName
+    val subtitle = snapshot.selection.line?.displayLabel ?: "Any direct line"
     return LayoutElementBuilders.Column.Builder()
         .apply {
             addContent(
                 text(
-                    snapshot.direction.tileLabel.layoutString,
+                    title.layoutString,
+                    typography = Typography.BODY_SMALL,
+                )
+            )
+            addContent(
+                text(
+                    subtitle.layoutString,
                     typography = Typography.BODY_SMALL,
                 )
             )

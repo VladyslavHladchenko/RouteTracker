@@ -99,8 +99,10 @@ object ComplicationTimelinePlanner {
                 fallbackText = "--",
                 title = marker,
                 contentDescription = buildString {
-                    append("No upcoming direct line 7 departures ")
-                    append(snapshot.direction.buttonLabel)
+                    append("No upcoming direct departures from ")
+                    append(snapshot.selection.origin.stationName)
+                    append(" to ")
+                    append(snapshot.selection.destination.stationName)
                     if (isStale) {
                         append(". Showing data older than 30 seconds.")
                     }
@@ -113,9 +115,12 @@ object ComplicationTimelinePlanner {
             fallbackText = departure.countdownMinutesAt(instant).toString(),
             title = marker,
             contentDescription = buildString {
-                append("Next direct line 7 departure ")
-                append(snapshot.direction.buttonLabel)
-                append(".")
+                append("Next direct departure from ")
+                append(snapshot.selection.origin.stationName)
+                append(" to ")
+                append(snapshot.selection.destination.stationName)
+                append(" on line ")
+                append(departure.lineShortName)
                 if (isStale) {
                     append(" Showing data older than 30 seconds.")
                 }

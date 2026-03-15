@@ -92,7 +92,7 @@ class ComplicationTimelinePlannerTest {
         isStale: Boolean = false,
     ): DepartureSnapshot {
         return DepartureSnapshot(
-            direction = RouteDirection.TO_PALMOVKA,
+            selection = RouteRepository.defaultRouteToPalmovka(),
             departures = departures,
             fetchedAt = fetchedAt,
             isStale = isStale,
@@ -105,6 +105,7 @@ class ComplicationTimelinePlannerTest {
     ): RouteDeparture {
         return RouteDeparture(
             tripId = tripId,
+            lineShortName = "7",
             departureTime = departureTime,
             countdownMinutes = 0,
             delayMinutes = 0,

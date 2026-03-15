@@ -17,6 +17,7 @@ local.properties
 
 # Gradle / Kotlin build state
 .gradle/
+.gradle-local/
 .gradle-home/
 .kotlin/
 build/

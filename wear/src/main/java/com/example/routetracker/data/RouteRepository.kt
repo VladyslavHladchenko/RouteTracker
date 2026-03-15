@@ -11,37 +11,35 @@ import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUp
 import com.example.routetracker.complication.MainComplicationService
 import com.example.routetracker.complication.StopwatchComplicationService
 import com.example.routetracker.tile.MainTileService
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 import java.time.Duration
-import java.time.OffsetDateTime
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
+import org.json.JSONArray
+import org.json.JSONObject
 
 private const val TAG = "RouteRepository"
-private const val MAX_LOG_BODY_LENGTH = 500
 private const val PREFS_NAME = "route_prefs"
-private const val PREF_DIRECTION = "selected_direction"
+private const val PREF_LEGACY_DIRECTION = "selected_direction"
+private const val PREF_CURRENT_ROUTE_SELECTION = "current_route_selection"
+private const val PREF_FAVORITE_ROUTE_SELECTIONS = "favorite_route_selections"
 private const val PREF_AUTO_UPDATES_ENABLED = "auto_updates_enabled"
 private const val PREF_SHOW_SECONDS = "show_seconds"
 private const val PREF_DETAILS_DIALOG_AUTO_REFRESH_ENABLED = "details_dialog_auto_refresh_enabled"
 private const val PREF_LIVE_SNAPSHOT_CACHE_MILLIS = "live_snapshot_cache_millis"
 private const val PREF_GTFS_TRIP_DETAIL_CACHE_MILLIS = "gtfs_trip_detail_cache_millis"
 private const val PREF_VEHICLE_POSITION_CACHE_MILLIS = "vehicle_position_cache_millis"
+
 private val DISPLAY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DISPLAY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 private val DETAIL_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM HH:mm")
 private val DETAIL_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM HH:mm:ss")
+private val PRAGUE_ZONE: ZoneId = ZoneId.of("Europe/Prague")
 
 private data class CacheDurationOption(
     val millis: Long,
@@ -58,60 +56,31 @@ private sealed interface VehiclePositionCacheValue {
     object Missing : VehiclePositionCacheValue
 }
 
-fun formatDisplayTime(time: ZonedDateTime, showSeconds: Boolean): String {
+fun formatDisplayTime(
+    time: ZonedDateTime,
+    showSeconds: Boolean,
+): String {
     return time.format(
         if (showSeconds) DISPLAY_CLOCK_SECONDS_FORMATTER else DISPLAY_CLOCK_MINUTES_FORMATTER
     )
 }
 
-enum class RouteDirection(
-    val preferenceKey: String,
-    val buttonLabel: String,
-    val tileLabel: String,
-    val sourceStopId: String,
-    val destinationStopId: String,
-) {
-    TO_PALMOVKA(
-        preferenceKey = "to_palmovka",
-        buttonLabel = "to Palmovka",
-        tileLabel = "Palmovka",
-        sourceStopId = "U463Z2P",
-        destinationStopId = "U529Z2P",
-    ),
-    TO_NADRAZI_VRSOVICE(
-        preferenceKey = "to_nadrazi_vrsovice",
-        buttonLabel = "to N\u00E1dra\u017E\u00ED V\u0159\u0161ovice",
-        tileLabel = "V\u0159\u0161ovice",
-        sourceStopId = "U529Z1P",
-        destinationStopId = "U463Z1P",
-    );
-
-    companion object {
-        fun fromPreference(value: String?): RouteDirection {
-            return entries.firstOrNull { it.preferenceKey == value } ?: TO_NADRAZI_VRSOVICE
-        }
-    }
-}
-
 class RouteRepository(private val context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val apiClient = GolemioApiClient()
+    private val catalogRepository = TransitCatalogRepository(context, apiClient)
 
     companion object {
-        private const val API_TOKEN =
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NDk0NywiaWF0IjoxNzczMTcxMDAxLCJleHAiOjExNzczMTcxMDAxLCJpc3MiOiJnb2xlbWlvIiwianRpIjoiMzA3M2I1NGItZTg1OC00MDFmLTllODMtYjA4ZWU0NTZhOTI2In0.x-b_ZZPX-yVnS24ABAMulVxB8cmeNviWd6aW7lTDldI"
-        private const val API_BASE_URL = "https://api.golemio.cz"
         private const val SEARCH_WINDOW_MINUTES = 120
-        private const val DEFAULT_TIMEOUT_MILLIS = 10_000
         private const val DEFAULT_LIVE_SNAPSHOT_CACHE_MILLIS = 2_000L
         private const val DEFAULT_GTFS_TRIP_DETAIL_CACHE_MILLIS = 60_000L
         private const val DEFAULT_VEHICLE_POSITION_CACHE_MILLIS = 2_000L
+        private const val MAX_FAVORITES = 8
         const val DETAILS_DIALOG_REFRESH_INTERVAL_MILLIS = 10_000L
-
         const val LINE_NAME = "7"
         const val MAX_RESULTS = 3
 
-        private val PRAGUE_ZONE: ZoneId = ZoneId.of("Europe/Prague")
         private val LIVE_SNAPSHOT_CACHE_OPTIONS = listOf(
             CacheDurationOption(0L, "Off"),
             CacheDurationOption(2_000L, "2 s"),
@@ -130,23 +99,61 @@ class RouteRepository(private val context: Context) {
             CacheDurationOption(5_000L, "5 s"),
             CacheDurationOption(10_000L, "10 s"),
         )
+        private val snapshotLock = Any()
+
         @Volatile
         private var cachedSnapshot: DepartureSnapshot? = null
 
         @Volatile
         private var cacheTimestampElapsedRealtime: Long = 0L
+
         private val tripDetailCache = TimedMemoryCache<TripDetailCacheKey, JSONObject>()
         private val vehiclePositionCache = TimedMemoryCache<String, VehiclePositionCacheValue>()
 
+        fun defaultRouteToNadraziVrsovice(): RouteSelection {
+            return RouteSelection(
+                origin = StopSelection(
+                    stationKey = "legacy:U529Z1P",
+                    stationName = "Palmovka",
+                    stopIds = listOf("U529Z1P"),
+                ),
+                destination = StopSelection(
+                    stationKey = "legacy:U463Z1P",
+                    stationName = "Nádraží Vršovice",
+                    stopIds = listOf("U463Z1P"),
+                ),
+                line = LineSelection(shortName = LINE_NAME),
+            )
+        }
+
+        fun defaultRouteToPalmovka(): RouteSelection {
+            return RouteSelection(
+                origin = StopSelection(
+                    stationKey = "legacy:U463Z2P",
+                    stationName = "Nádraží Vršovice",
+                    stopIds = listOf("U463Z2P"),
+                ),
+                destination = StopSelection(
+                    stationKey = "legacy:U529Z2P",
+                    stationName = "Palmovka",
+                    stopIds = listOf("U529Z2P"),
+                ),
+                line = LineSelection(shortName = LINE_NAME),
+            )
+        }
+
+        fun defaultRouteSelection(): RouteSelection = defaultRouteToNadraziVrsovice()
+
         fun previewSnapshot(
-            direction: RouteDirection = RouteDirection.TO_NADRAZI_VRSOVICE,
+            selection: RouteSelection = defaultRouteSelection(),
             now: ZonedDateTime = ZonedDateTime.now(PRAGUE_ZONE),
         ): DepartureSnapshot {
             return DepartureSnapshot(
-                direction = direction,
+                selection = selection,
                 departures = listOf(
                     previewDeparture(
                         tripId = "preview-1",
+                        lineShortName = selection.line?.shortName ?: "7",
                         scheduledTime = now.plusMinutes(2),
                         predictedTime = now.plusMinutes(3),
                         countdownMinutes = 3,
@@ -154,6 +161,7 @@ class RouteRepository(private val context: Context) {
                     ),
                     previewDeparture(
                         tripId = "preview-2",
+                        lineShortName = selection.line?.shortName ?: "10",
                         scheduledTime = now.plusMinutes(11),
                         predictedTime = now.plusMinutes(11),
                         countdownMinutes = 11,
@@ -161,6 +169,7 @@ class RouteRepository(private val context: Context) {
                     ),
                     previewDeparture(
                         tripId = "preview-3",
+                        lineShortName = selection.line?.shortName ?: "16",
                         scheduledTime = now.plusMinutes(20),
                         predictedTime = now.plusMinutes(19),
                         countdownMinutes = 19,
@@ -173,6 +182,7 @@ class RouteRepository(private val context: Context) {
 
         private fun previewDeparture(
             tripId: String,
+            lineShortName: String,
             scheduledTime: ZonedDateTime,
             predictedTime: ZonedDateTime?,
             countdownMinutes: Int,
@@ -180,12 +190,9 @@ class RouteRepository(private val context: Context) {
         ): RouteDeparture {
             val boardDelaySeconds = delayMinutes * 60
             val resolvedDepartureTime = predictedTime ?: scheduledTime
-            val originArrivalTime = BoardStopTime(
-                scheduledTime = scheduledTime.minusMinutes(1),
-                predictedTime = predictedTime?.minusMinutes(1),
-            )
             return RouteDeparture(
                 tripId = tripId,
+                lineShortName = lineShortName,
                 departureTime = resolvedDepartureTime,
                 countdownMinutes = countdownMinutes,
                 delayMinutes = delayMinutes,
@@ -194,7 +201,10 @@ class RouteRepository(private val context: Context) {
                         scheduledTime = scheduledTime,
                         predictedTime = predictedTime,
                     ),
-                    originArrivalTime = originArrivalTime,
+                    originArrivalTime = BoardStopTime(
+                        scheduledTime = scheduledTime.minusMinutes(1),
+                        predictedTime = predictedTime?.minusMinutes(1),
+                    ),
                     delaySeconds = boardDelaySeconds,
                 ),
                 vehiclePositionDetails = VehiclePositionDetails(
@@ -206,8 +216,106 @@ class RouteRepository(private val context: Context) {
         }
     }
 
-    fun getSelectedDirection(): RouteDirection {
-        return RouteDirection.fromPreference(prefs.getString(PREF_DIRECTION, null))
+    init {
+        migrateLegacyDirectionIfNeeded()
+    }
+
+    fun getCurrentRouteSelection(): RouteSelection {
+        val storedSelection = prefs.getString(PREF_CURRENT_ROUTE_SELECTION, null)
+            ?.let(::routeSelectionFromJsonString)
+            ?: defaultRouteSelection()
+        return rebindSelectionToCachedCatalog(storedSelection)
+    }
+
+    fun setCurrentRouteSelection(selection: RouteSelection) {
+        val reboundSelection = rebindSelectionToCachedCatalog(selection)
+        val currentSelection = getCurrentRouteSelection()
+        if (currentSelection.stableKey == reboundSelection.stableKey) {
+            Log.d(TAG, "Route selection already active: ${reboundSelection.routeSummaryWithPlatforms}")
+            return
+        }
+
+        prefs.edit {
+            putString(PREF_CURRENT_ROUTE_SELECTION, routeSelectionToJsonString(reboundSelection))
+        }
+
+        cachedSnapshot = null
+        cacheTimestampElapsedRealtime = 0L
+        Log.d(TAG, "Route selection changed to ${reboundSelection.routeSummaryWithPlatforms}")
+        requestSurfaceRefresh()
+    }
+
+    fun getFavoriteRoutes(): List<RouteSelection> {
+        val rawFavorites = prefs.getString(PREF_FAVORITE_ROUTE_SELECTIONS, null)
+            ?.let(::routeSelectionListFromJsonString)
+            .orEmpty()
+        return rawFavorites
+            .map(::rebindSelectionToCachedCatalog)
+            .distinctBy { it.stableKey }
+    }
+
+    fun isFavoriteRoute(selection: RouteSelection): Boolean {
+        return getFavoriteRoutes().any { it.stableKey == selection.stableKey }
+    }
+
+    fun toggleFavoriteRoute(selection: RouteSelection): Boolean {
+        val reboundSelection = rebindSelectionToCachedCatalog(selection)
+        val favorites = getFavoriteRoutes().toMutableList()
+        val existingIndex = favorites.indexOfFirst { it.stableKey == reboundSelection.stableKey }
+        val nowFavorite = if (existingIndex >= 0) {
+            favorites.removeAt(existingIndex)
+            false
+        } else {
+            favorites.add(0, reboundSelection)
+            while (favorites.size > MAX_FAVORITES) {
+                favorites.removeLast()
+            }
+            true
+        }
+
+        prefs.edit {
+            putString(PREF_FAVORITE_ROUTE_SELECTIONS, routeSelectionListToJsonString(favorites))
+        }
+        Log.d(TAG, "Favorite routes changed. route=${reboundSelection.routeSummaryWithPlatforms} favorite=$nowFavorite")
+        return nowFavorite
+    }
+
+    fun loadTransitCatalog(forceRefresh: Boolean = false): TransitCatalog {
+        return catalogRepository.getCatalog(forceRefresh = forceRefresh)
+    }
+
+    fun getCachedTransitCatalog(): TransitCatalog? {
+        return catalogRepository.getCachedCatalog()
+    }
+
+    fun prefetchTransitCatalogIfNeeded() {
+        catalogRepository.prefetchIfNeeded()
+    }
+
+    fun isTransitCatalogRefreshDue(): Boolean {
+        return catalogRepository.isCatalogRefreshDue()
+    }
+
+    fun searchStations(
+        query: String,
+        limit: Int = 12,
+    ): List<StationOption> {
+        return loadTransitCatalog().searchStations(query, limit)
+    }
+
+    fun searchLines(
+        query: String,
+        limit: Int = 12,
+    ): List<LineOption> {
+        return loadTransitCatalog().searchLines(query, limit)
+    }
+
+    fun resolveStopSelection(
+        stationKey: String,
+        platformKey: String?,
+    ): StopSelection? {
+        val station = loadTransitCatalog().stationByKey(stationKey) ?: return null
+        return station.resolveSelection(platformKey)
     }
 
     fun getAutoUpdatesEnabled(): Boolean {
@@ -246,26 +354,8 @@ class RouteRepository(private val context: Context) {
         return cacheDurationLabel(getVehiclePositionCacheMillis())
     }
 
-    fun setSelectedDirection(direction: RouteDirection) {
-        val currentDirection = getSelectedDirection()
-        if (currentDirection == direction) {
-            Log.d(TAG, "Direction already selected: ${direction.preferenceKey}")
-            return
-        }
-
-        prefs.edit {
-            putString(PREF_DIRECTION, direction.preferenceKey)
-        }
-
-        cachedSnapshot = null
-        cacheTimestampElapsedRealtime = 0L
-        Log.d(TAG, "Direction changed to ${direction.preferenceKey}")
-        requestSurfaceRefresh()
-    }
-
     fun setAutoUpdatesEnabled(enabled: Boolean) {
-        val currentValue = getAutoUpdatesEnabled()
-        if (currentValue == enabled) {
+        if (getAutoUpdatesEnabled() == enabled) {
             Log.d(TAG, "Auto updates already set to $enabled")
             return
         }
@@ -279,8 +369,7 @@ class RouteRepository(private val context: Context) {
     }
 
     fun setShowSecondsEnabled(enabled: Boolean) {
-        val currentValue = getShowSecondsEnabled()
-        if (currentValue == enabled) {
+        if (getShowSecondsEnabled() == enabled) {
             Log.d(TAG, "Show seconds already set to $enabled")
             return
         }
@@ -294,8 +383,7 @@ class RouteRepository(private val context: Context) {
     }
 
     fun setDetailsDialogAutoRefreshEnabled(enabled: Boolean) {
-        val currentValue = getDetailsDialogAutoRefreshEnabled()
-        if (currentValue == enabled) {
+        if (getDetailsDialogAutoRefreshEnabled() == enabled) {
             Log.d(TAG, "Details dialog auto-refresh already set to $enabled")
             return
         }
@@ -312,9 +400,7 @@ class RouteRepository(private val context: Context) {
             currentMillis = getLiveSnapshotCacheMillis(),
             options = LIVE_SNAPSHOT_CACHE_OPTIONS,
         )
-        prefs.edit {
-            putLong(PREF_LIVE_SNAPSHOT_CACHE_MILLIS, nextValue)
-        }
+        prefs.edit { putLong(PREF_LIVE_SNAPSHOT_CACHE_MILLIS, nextValue) }
         Log.d(TAG, "Live snapshot cache changed to ${cacheDurationLabel(nextValue)}")
         requestSurfaceRefresh()
         return nextValue
@@ -325,9 +411,7 @@ class RouteRepository(private val context: Context) {
             currentMillis = getGtfsTripDetailCacheMillis(),
             options = GTFS_TRIP_DETAIL_CACHE_OPTIONS,
         )
-        prefs.edit {
-            putLong(PREF_GTFS_TRIP_DETAIL_CACHE_MILLIS, nextValue)
-        }
+        prefs.edit { putLong(PREF_GTFS_TRIP_DETAIL_CACHE_MILLIS, nextValue) }
         Log.d(TAG, "GTFS trip detail cache changed to ${cacheDurationLabel(nextValue)}")
         requestSurfaceRefresh()
         return nextValue
@@ -338,20 +422,28 @@ class RouteRepository(private val context: Context) {
             currentMillis = getVehiclePositionCacheMillis(),
             options = VEHICLE_POSITION_CACHE_OPTIONS,
         )
-        prefs.edit {
-            putLong(PREF_VEHICLE_POSITION_CACHE_MILLIS, nextValue)
-        }
+        prefs.edit { putLong(PREF_VEHICLE_POSITION_CACHE_MILLIS, nextValue) }
         Log.d(TAG, "Vehicle position cache changed to ${cacheDurationLabel(nextValue)}")
         requestSurfaceRefresh()
         return nextValue
     }
 
     fun getDepartureSnapshot(forceRefresh: Boolean = false): DepartureSnapshot {
-        val selectedDirection = getSelectedDirection()
+        val selection = getCurrentRouteSelection()
+        if (selection.origin.stopIds.isEmpty() || selection.destination.stopIds.isEmpty()) {
+            return DepartureSnapshot(
+                selection = selection,
+                departures = emptyList(),
+                fetchedAt = ZonedDateTime.now(PRAGUE_ZONE),
+                isStale = true,
+                errorMessage = "Set route first.",
+            )
+        }
+
         val snapshotCacheMillis = getLiveSnapshotCacheMillis()
         if (!forceRefresh && !getAutoUpdatesEnabled()) {
             return pausedSnapshot(
-                direction = selectedDirection,
+                selection = selection,
                 cached = cachedSnapshot,
             )
         }
@@ -361,18 +453,18 @@ class RouteRepository(private val context: Context) {
         if (!forceRefresh &&
             snapshotCacheMillis > 0L &&
             cached != null &&
-            cached.direction == selectedDirection &&
+            cached.selection.stableKey == selection.stableKey &&
             nowElapsedRealtime - cacheTimestampElapsedRealtime < snapshotCacheMillis
         ) {
-            Log.d(TAG, "Returning cached snapshot with ${cached.departures.size} departures for ${selectedDirection.preferenceKey}.")
+            Log.d(TAG, "Returning cached snapshot with ${cached.departures.size} departures for ${selection.routeSummaryWithPlatforms}.")
             return cached
         }
 
-        synchronized(RouteRepository::class.java) {
-            val synchronizedSnapshotCacheMillis = getLiveSnapshotCacheMillis()
+        synchronized(snapshotLock) {
+            val synchronizedCacheMillis = getLiveSnapshotCacheMillis()
             if (!forceRefresh && !getAutoUpdatesEnabled()) {
                 return pausedSnapshot(
-                    direction = selectedDirection,
+                    selection = selection,
                     cached = cachedSnapshot,
                 )
             }
@@ -380,32 +472,29 @@ class RouteRepository(private val context: Context) {
             val refreshedElapsedRealtime = SystemClock.elapsedRealtime()
             val currentCached = cachedSnapshot
             if (!forceRefresh &&
-                synchronizedSnapshotCacheMillis > 0L &&
+                synchronizedCacheMillis > 0L &&
                 currentCached != null &&
-                currentCached.direction == selectedDirection &&
-                refreshedElapsedRealtime - cacheTimestampElapsedRealtime < synchronizedSnapshotCacheMillis
+                currentCached.selection.stableKey == selection.stableKey &&
+                refreshedElapsedRealtime - cacheTimestampElapsedRealtime < synchronizedCacheMillis
             ) {
-                Log.d(TAG, "Returning cached snapshot after synchronized check for ${selectedDirection.preferenceKey}.")
+                Log.d(TAG, "Returning cached snapshot after synchronized check for ${selection.routeSummaryWithPlatforms}.")
                 return currentCached
             }
 
-            Log.d(TAG, "Refreshing snapshot. forceRefresh=$forceRefresh direction=${selectedDirection.preferenceKey}")
+            Log.d(TAG, "Refreshing snapshot. forceRefresh=$forceRefresh route=${selection.routeSummaryWithPlatforms}")
             return try {
-                fetchDepartureSnapshot(selectedDirection).also { snapshot ->
+                fetchDepartureSnapshot(selection).also { snapshot ->
                     cachedSnapshot = snapshot
                     cacheTimestampElapsedRealtime = refreshedElapsedRealtime
-                    Log.d(
-                        TAG,
-                        "Snapshot refreshed successfully with ${snapshot.departures.size} departures at ${snapshot.fetchedAt}.",
-                    )
+                    Log.d(TAG, "Snapshot refreshed successfully with ${snapshot.departures.size} departures at ${snapshot.fetchedAt}.")
                 }
             } catch (error: Exception) {
                 Log.e(TAG, "Failed to refresh snapshot.", error)
-                currentCached?.takeIf { it.direction == selectedDirection }?.copy(
+                currentCached?.takeIf { it.selection.stableKey == selection.stableKey }?.copy(
                     isStale = true,
                     errorMessage = "Showing cached data.",
                 ) ?: DepartureSnapshot(
-                    direction = selectedDirection,
+                    selection = selection,
                     departures = emptyList(),
                     fetchedAt = ZonedDateTime.now(PRAGUE_ZONE),
                     isStale = true,
@@ -431,7 +520,7 @@ class RouteRepository(private val context: Context) {
     }
 
     fun formatDetailTime(timestamp: ZonedDateTime?): String {
-        timestamp ?: return "—"
+        timestamp ?: return "--"
         val formatter = when {
             timestamp.toLocalDate() == LocalDate.now(PRAGUE_ZONE) -> {
                 if (getShowSecondsEnabled()) DISPLAY_CLOCK_SECONDS_FORMATTER else DISPLAY_CLOCK_MINUTES_FORMATTER
@@ -444,13 +533,13 @@ class RouteRepository(private val context: Context) {
     }
 
     fun formatDelaySeconds(seconds: Int?): String {
-        seconds ?: return "—"
+        seconds ?: return "--"
         val sign = when {
             seconds > 0 -> "+"
             seconds < 0 -> "-"
             else -> ""
         }
-        val absoluteSeconds = kotlin.math.abs(seconds)
+        val absoluteSeconds = abs(seconds)
         return when {
             absoluteSeconds >= 60 && absoluteSeconds % 60 == 0 -> {
                 "$sign${absoluteSeconds / 60} min"
@@ -460,35 +549,9 @@ class RouteRepository(private val context: Context) {
         }
     }
 
-    private fun cacheDurationLabel(durationMillis: Long): String {
-        (LIVE_SNAPSHOT_CACHE_OPTIONS + GTFS_TRIP_DETAIL_CACHE_OPTIONS + VEHICLE_POSITION_CACHE_OPTIONS)
-            .firstOrNull { it.millis == durationMillis }
-            ?.let { return it.label }
-
-        return when {
-            durationMillis <= 0L -> "Off"
-            durationMillis % 60_000L == 0L -> "${durationMillis / 60_000L} min"
-            durationMillis % 1_000L == 0L -> "${durationMillis / 1_000L} s"
-            else -> "${durationMillis} ms"
-        }
-    }
-
-    private fun nextCacheDuration(
-        currentMillis: Long,
-        options: List<CacheDurationOption>,
-    ): Long {
-        val currentIndex = options.indexOfFirst { it.millis == currentMillis }
-        return if (currentIndex == -1) {
-            options.first().millis
-        } else {
-            options[(currentIndex + 1) % options.size].millis
-        }
-    }
-
     private fun requestSurfaceRefresh() {
         try {
-            TileService.getUpdater(context)
-                .requestUpdate(MainTileService::class.java)
+            TileService.getUpdater(context).requestUpdate(MainTileService::class.java)
             Log.d(TAG, "Requested tile refresh.")
         } catch (_: Exception) {
             Log.w(TAG, "Tile refresh request failed.")
@@ -512,15 +575,15 @@ class RouteRepository(private val context: Context) {
     }
 
     private fun pausedSnapshot(
-        direction: RouteDirection,
+        selection: RouteSelection,
         cached: DepartureSnapshot?,
     ): DepartureSnapshot {
-        val matchingCached = cached?.takeIf { it.direction == direction }
+        val matchingCached = cached?.takeIf { it.selection.stableKey == selection.stableKey }
         return matchingCached?.copy(
             isStale = true,
             errorMessage = "Updates paused.",
         ) ?: DepartureSnapshot(
-            direction = direction,
+            selection = selection,
             departures = emptyList(),
             fetchedAt = ZonedDateTime.now(PRAGUE_ZONE),
             isStale = true,
@@ -528,10 +591,10 @@ class RouteRepository(private val context: Context) {
         )
     }
 
-    private fun fetchDepartureSnapshot(direction: RouteDirection): DepartureSnapshot {
-        val departureResult = fetchDirectDepartures(direction)
+    private fun fetchDepartureSnapshot(selection: RouteSelection): DepartureSnapshot {
+        val departureResult = fetchDirectDepartures(selection)
         val snapshot = DepartureSnapshot(
-            direction = direction,
+            selection = selection,
             departures = departureResult.departures,
             fetchedAt = departureResult.referenceNow,
         )
@@ -539,15 +602,20 @@ class RouteRepository(private val context: Context) {
         return snapshot
     }
 
-    private fun fetchDirectDepartures(direction: RouteDirection): DepartureQueryResult {
+    private fun fetchDirectDepartures(selection: RouteSelection): DepartureQueryResult {
+        // A route selection can represent one platform or an entire station on each end.
+        // We therefore query all selected source stop IDs together, then verify direct
+        // reachability against the selected destination stop set trip-by-trip.
         val deviceNow = ZonedDateTime.now(PRAGUE_ZONE)
         val boardLimit = max(50, MAX_RESULTS * 12)
-        val boardResponse = fetchDepartureBoard(deviceNow, boardLimit, direction.sourceStopId)
-        val payload = boardResponse.body
-        val referenceNow = deviceNow
-
-        val departures = payload.optJSONArray("departures") ?: JSONArray()
+        val sourceStopIds = selection.origin.stopIds.distinct().sorted()
+        val destinationStopIds = selection.destination.stopIds.toSet()
+        val sourceStopIdSet = sourceStopIds.toSet()
+        val selectedLine = selection.line?.shortName?.trim()
+        val boardPayload = fetchDepartureBoard(deviceNow, boardLimit, sourceStopIds)
+        val departures = boardPayload.optJSONArray("departures") ?: JSONArray()
         val matches = mutableListOf<RouteDeparture>()
+
         var skippedWrongLine = 0
         var skippedWrongStop = 0
         var skippedMissingTime = 0
@@ -562,11 +630,14 @@ class RouteRepository(private val context: Context) {
             val stop = departure.optJSONObject("stop")
             val trip = departure.optJSONObject("trip")
 
-            if (!route?.optString("short_name").orEmpty().equals(LINE_NAME, ignoreCase = true)) {
+            val routeShortName = route?.optSanitizedString("short_name").orEmpty()
+            if (!selectedLine.isNullOrBlank() && !routeShortName.equals(selectedLine, ignoreCase = true)) {
                 skippedWrongLine += 1
                 continue
             }
-            if (stop?.optString("id").orEmpty() != direction.sourceStopId) {
+
+            val boardedStopId = stop?.optSanitizedString("id").orEmpty()
+            if (boardedStopId !in sourceStopIdSet) {
                 skippedWrongStop += 1
                 continue
             }
@@ -576,8 +647,9 @@ class RouteRepository(private val context: Context) {
                 skippedMissingTime += 1
                 continue
             }
+
             val boardArrivalTime = parseBoardStopTime(departure, "arrival_timestamp")
-            val tripId = trip?.optString("id").orEmpty()
+            val tripId = trip?.optSanitizedString("id").orEmpty()
             if (tripId.isBlank()) {
                 skippedMissingTripId += 1
                 continue
@@ -591,14 +663,19 @@ class RouteRepository(private val context: Context) {
             val stopTimes = tripDetail.optJSONArray("stop_times") ?: JSONArray()
             val boardingIndex = findBoardingIndex(
                 stopTimes = stopTimes,
-                boardedStopId = direction.sourceStopId,
+                boardedStopId = boardedStopId,
                 boardingReferenceTime = boardStopTime.bestAvailableTime,
             )
             if (boardingIndex == null) {
                 skippedMissingBoardingIndex += 1
                 continue
             }
-            val destinationStopTime = findDestinationStopTime(stopTimes, boardingIndex, direction.destinationStopId)
+
+            val destinationStopTime = findDestinationStopTime(
+                stopTimes = stopTimes,
+                boardingIndex = boardingIndex,
+                destinationStopIds = destinationStopIds,
+            )
             if (destinationStopTime == null) {
                 skippedMissingDestination += 1
                 continue
@@ -609,7 +686,7 @@ class RouteRepository(private val context: Context) {
             var vehicleDelaySeconds: Int? = null
             var vehicleOriginTimestamp: ZonedDateTime? = null
 
-            fetchVehiclePosition(tripId)?.let { vehiclePosition: JSONObject ->
+            fetchVehiclePosition(tripId)?.let { vehiclePosition ->
                 val lastPosition = vehiclePosition
                     .optJSONObject("properties")
                     ?.optJSONObject("last_position")
@@ -623,10 +700,13 @@ class RouteRepository(private val context: Context) {
                 continue
             }
 
-            val resolvedTiming = resolveDepartureTiming(
-                boardStopTime = boardStopTime,
-                boardDelaySeconds = boardDelaySeconds,
-                vehicleDelaySeconds = vehicleDelaySeconds,
+            val resolvedTiming = DepartureTimingResolver.resolve(
+                DepartureRealtimeInputs(
+                    scheduledDepartureTime = boardStopTime.scheduledTime,
+                    predictedDepartureTime = boardStopTime.predictedTime,
+                    boardDelaySeconds = boardDelaySeconds,
+                    vehicleDelaySeconds = vehicleDelaySeconds,
+                )
             )
             val destinationArrivalTime = resolveArrivalTime(
                 destinationStopTime = destinationStopTime,
@@ -635,7 +715,8 @@ class RouteRepository(private val context: Context) {
             )
             val matchedDeparture = resolvedTiming.toRouteDeparture(
                 tripId = tripId,
-                referenceNow = referenceNow,
+                lineShortName = routeShortName.ifBlank { selectedLine ?: "?" },
+                referenceNow = deviceNow,
                 departureBoardDetails = DepartureBoardDetails(
                     departureTime = boardStopTime,
                     originArrivalTime = boardArrivalTime,
@@ -654,7 +735,7 @@ class RouteRepository(private val context: Context) {
             matches += matchedDeparture
             Log.d(
                 TAG,
-                "Accepted departure: direction=${direction.preferenceKey} tripId=$tripId label=${matchedDeparture.compactLabel} at ${matchedDeparture.departureTime}",
+                "Accepted departure: route=${selection.routeSummaryWithPlatforms} tripId=$tripId line=${matchedDeparture.lineShortName} label=${matchedDeparture.compactLabel} at ${matchedDeparture.departureTime}",
             )
 
             if (matches.size >= MAX_RESULTS) {
@@ -664,61 +745,49 @@ class RouteRepository(private val context: Context) {
 
         Log.d(
             TAG,
-            "Route scan done. direction=${direction.preferenceKey} boardCount=${departures.length()} matches=${matches.size} " +
+            "Route scan done. route=${selection.routeSummaryWithPlatforms} boardCount=${departures.length()} matches=${matches.size} " +
                 "skippedWrongLine=$skippedWrongLine skippedWrongStop=$skippedWrongStop " +
                 "skippedMissingTime=$skippedMissingTime skippedMissingTripId=$skippedMissingTripId " +
-                "skippedMissingBoardingIndex=$skippedMissingBoardingIndex " +
-                "skippedMissingDestination=$skippedMissingDestination skippedCanceled=$skippedCanceled",
+                "skippedMissingBoardingIndex=$skippedMissingBoardingIndex skippedMissingDestination=$skippedMissingDestination " +
+                "skippedCanceled=$skippedCanceled",
         )
         return DepartureQueryResult(
             departures = matches.sortedBy { it.departureTime }.take(MAX_RESULTS),
-            referenceNow = referenceNow,
+            referenceNow = deviceNow,
         )
     }
 
     private fun fetchDepartureBoard(
         now: ZonedDateTime,
         boardLimit: Int,
-        sourceStopId: String,
-    ): ApiJsonResponse {
-        val params = linkedMapOf(
-            "ids" to sourceStopId,
-            "timeFrom" to now.toOffsetDateTime().truncatedTo(ChronoUnit.SECONDS).toString(),
-            "minutesAfter" to SEARCH_WINDOW_MINUTES.toString(),
-            "limit" to boardLimit.toString(),
-            "order" to "real",
-        )
+        sourceStopIds: List<String>,
+    ): JSONObject {
+        val params = buildList {
+            sourceStopIds.forEach { add("ids[]" to it) }
+            add("timeFrom" to now.toOffsetDateTime().truncatedTo(ChronoUnit.SECONDS).toString())
+            add("minutesAfter" to SEARCH_WINDOW_MINUTES.toString())
+            add("limit" to boardLimit.toString())
+            add("order" to "real")
+        }
 
         return try {
-            apiGetResponseObject("/v2/pid/departureboards", params)
+            apiClient.getObject("/v2/pid/departureboards", params).body
         } catch (error: ApiException) {
             if (!error.isTimeFromOutOfRange()) {
                 throw error
             }
 
-            Log.w(
-                TAG,
-                "Departure board rejected timeFrom=${params["timeFrom"]}. Retrying without timeFrom. body=${error.responseBody.truncatedForLog()}",
-            )
-            val fallbackParams = LinkedHashMap(params).apply {
-                remove("timeFrom")
-            }
-            apiGetResponseObject("/v2/pid/departureboards", fallbackParams)
+            Log.w(TAG, "Departure board rejected timeFrom. Retrying without timeFrom.")
+            val fallbackParams = params.filterNot { it.first == "timeFrom" }
+            apiClient.getObject("/v2/pid/departureboards", fallbackParams).body
         }
-    }
-
-    private fun apiGetObject(path: String, params: Map<String, String>): JSONObject {
-        return apiGetResponseObject(path, params).body
     }
 
     private fun fetchTripDetail(
         tripId: String,
         serviceDate: String,
     ): JSONObject {
-        val cacheKey = TripDetailCacheKey(
-            tripId = tripId,
-            serviceDate = serviceDate,
-        )
+        val cacheKey = TripDetailCacheKey(tripId = tripId, serviceDate = serviceDate)
         val ttlMillis = getGtfsTripDetailCacheMillis()
         val nowElapsedRealtime = SystemClock.elapsedRealtime()
 
@@ -731,15 +800,15 @@ class RouteRepository(private val context: Context) {
             return cachedTripDetail
         }
 
-        val tripDetail = apiGetObject(
+        val tripDetail = apiClient.getObject(
             "/v2/gtfs/trips/$tripId",
-            mapOf(
+            listOf(
                 "date" to serviceDate,
                 "includeStops" to "true",
                 "includeStopTimes" to "true",
                 "includeRoute" to "true",
-            )
-        )
+            ),
+        ).body
 
         if (ttlMillis > 0L) {
             tripDetailCache.put(
@@ -752,75 +821,6 @@ class RouteRepository(private val context: Context) {
         return tripDetail
     }
 
-    private fun apiGetResponseObject(path: String, params: Map<String, String>): ApiJsonResponse {
-        val query = params.entries.joinToString("&") { (key, value) ->
-            "${key.urlEncode()}=${value.urlEncode()}"
-        }
-        val url = URL(
-            buildString {
-                append(API_BASE_URL)
-                append(path)
-                if (query.isNotEmpty()) {
-                    append('?')
-                    append(query)
-                }
-            }
-        )
-
-        repeat(4) { attempt ->
-            Log.d(TAG, "GET $path attempt=${attempt + 1} params=$params")
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = DEFAULT_TIMEOUT_MILLIS
-                readTimeout = DEFAULT_TIMEOUT_MILLIS
-                setRequestProperty("accept", "application/json")
-                setRequestProperty("X-Access-Token", API_TOKEN)
-            }
-
-            try {
-                val statusCode = connection.responseCode
-                val responseBody = readResponseBody(connection, statusCode)
-
-                if (statusCode == 429) {
-                    val retryAfterSeconds = connection.getHeaderField("Retry-After")
-                        ?.toDoubleOrNull()
-                        ?: (1.5 * (attempt + 1))
-                    Log.w(TAG, "Rate limited on $path. retryAfterSeconds=$retryAfterSeconds")
-                    Thread.sleep(min((retryAfterSeconds * 1_000).toLong(), 6_000L))
-                    return@repeat
-                }
-
-                if (statusCode !in 200..299) {
-                    if (statusCode == 404 && path.startsWith("/v2/vehiclepositions/")) {
-                        Log.d(
-                            TAG,
-                            "Request returned no live vehicle position. path=$path status=$statusCode body=${responseBody.truncatedForLog()}",
-                        )
-                    } else {
-                        Log.e(
-                            TAG,
-                            "Request failed. path=$path status=$statusCode body=${responseBody.truncatedForLog()}",
-                        )
-                    }
-                    throw ApiException(
-                        statusCode = statusCode,
-                        message = "HTTP $statusCode for $path",
-                        responseBody = responseBody,
-                    )
-                }
-
-                Log.d(TAG, "Request succeeded. path=$path status=$statusCode")
-                return ApiJsonResponse(
-                    body = JSONObject(responseBody),
-                )
-            } finally {
-                connection.disconnect()
-            }
-        }
-
-        throw IOException("Golemio API rate-limited the request too many times.")
-    }
-
     private fun fetchVehiclePosition(tripId: String): JSONObject? {
         val ttlMillis = getVehiclePositionCacheMillis()
         val nowElapsedRealtime = SystemClock.elapsedRealtime()
@@ -830,24 +830,24 @@ class RouteRepository(private val context: Context) {
             ttlMillis = ttlMillis,
             nowElapsedRealtime = nowElapsedRealtime,
         )?.let { cachedValue ->
-            when (cachedValue) {
+            return when (cachedValue) {
                 is VehiclePositionCacheValue.Present -> {
                     Log.d(TAG, "Using cached vehicle position for tripId=$tripId")
-                    return cachedValue.body
+                    cachedValue.body
                 }
 
                 VehiclePositionCacheValue.Missing -> {
                     Log.d(TAG, "Using cached vehicle-position miss for tripId=$tripId")
-                    return null
+                    null
                 }
             }
         }
 
         return try {
-            val vehiclePosition = apiGetObject(
+            val vehiclePosition = apiClient.getObject(
                 "/v2/vehiclepositions/$tripId",
-                mapOf("preferredTimezone" to "Europe/Prague")
-            )
+                listOf("preferredTimezone" to "Europe/Prague"),
+            ).body
             if (ttlMillis > 0L) {
                 vehiclePositionCache.put(
                     key = tripId,
@@ -868,43 +868,18 @@ class RouteRepository(private val context: Context) {
                 }
                 null
             } else {
-                Log.e(
-                    TAG,
-                    "Vehicle position lookup failed for tripId=$tripId body=${error.responseBody.truncatedForLog()}",
-                )
                 throw error
             }
         }
     }
 
-    private fun resolveDepartureTiming(
-        boardStopTime: BoardStopTime,
-        boardDelaySeconds: Int?,
-        vehicleDelaySeconds: Int?,
-    ): ResolvedDepartureTiming {
-        return DepartureTimingResolver.resolve(
-            DepartureRealtimeInputs(
-                scheduledDepartureTime = boardStopTime.scheduledTime,
-                predictedDepartureTime = boardStopTime.predictedTime,
-                boardDelaySeconds = boardDelaySeconds,
-                vehicleDelaySeconds = vehicleDelaySeconds,
-            )
-        )
-    }
-
-    private fun readResponseBody(connection: HttpURLConnection, statusCode: Int): String {
-        val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
-        return stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-    }
-
-    private fun parseBoardStopTime(entry: JSONObject, fieldName: String): BoardStopTime? {
+    private fun parseBoardStopTime(
+        entry: JSONObject,
+        fieldName: String,
+    ): BoardStopTime? {
         val timestamps = entry.optJSONObject(fieldName) ?: return null
-        val scheduledValue = timestamps.optString("scheduled")
-        if (scheduledValue.isBlank()) {
-            return null
-        }
-
-        val predictedValue = timestamps.optString("predicted").ifBlank { null }
+        val scheduledValue = timestamps.optSanitizedString("scheduled") ?: return null
+        val predictedValue = timestamps.optSanitizedString("predicted")
         return BoardStopTime(
             scheduledTime = OffsetDateTime.parse(scheduledValue).atZoneSameInstant(PRAGUE_ZONE),
             predictedTime = predictedValue?.let { OffsetDateTime.parse(it).atZoneSameInstant(PRAGUE_ZONE) },
@@ -912,23 +887,19 @@ class RouteRepository(private val context: Context) {
     }
 
     private fun parseOptionalOffsetTimestamp(value: String?): ZonedDateTime? {
-        if (value.isNullOrBlank()) {
-            return null
-        }
-        return OffsetDateTime.parse(value).atZoneSameInstant(PRAGUE_ZONE)
+        return value
+            .sanitizeApiValue()
+            ?.let { sanitizedValue -> OffsetDateTime.parse(sanitizedValue).atZoneSameInstant(PRAGUE_ZONE) }
     }
 
     private fun extractBoardDelaySeconds(entry: JSONObject): Int? {
         optionalInt(entry.optJSONObject("delay"), "seconds")?.let { return it }
 
         val timestamps = entry.optJSONObject("departure_timestamp") ?: return null
-        val predicted = timestamps.optString("predicted")
-        val scheduled = timestamps.optString("scheduled")
-        if (predicted.isBlank() || scheduled.isBlank()) {
-            return null
-        }
+        val predicted = timestamps.optSanitizedString("predicted") ?: return null
+        val scheduled = timestamps.optSanitizedString("scheduled") ?: return null
 
-        return java.time.Duration.between(
+        return Duration.between(
             OffsetDateTime.parse(scheduled),
             OffsetDateTime.parse(predicted),
         ).seconds.toInt()
@@ -965,11 +936,11 @@ class RouteRepository(private val context: Context) {
     private fun findDestinationStopTime(
         stopTimes: JSONArray,
         boardingIndex: Int,
-        destinationStopId: String,
+        destinationStopIds: Set<String>,
     ): JSONObject? {
         for (index in boardingIndex + 1 until stopTimes.length()) {
             val stopTime = stopTimes.optJSONObject(index) ?: continue
-            if (stopTime.optString("stop_id") == destinationStopId) {
+            if (stopTime.optString("stop_id") in destinationStopIds) {
                 return stopTime
             }
         }
@@ -990,7 +961,10 @@ class RouteRepository(private val context: Context) {
             .plusSeconds(delaySeconds.toLong())
     }
 
-    private fun combineServiceTime(anchor: ZonedDateTime, hhmmss: String): ZonedDateTime {
+    private fun combineServiceTime(
+        anchor: ZonedDateTime,
+        hhmmss: String,
+    ): ZonedDateTime {
         val parts = hhmmss.split(':')
         require(parts.size == 3) { "Unsupported service time: $hhmmss" }
 
@@ -1008,25 +982,176 @@ class RouteRepository(private val context: Context) {
             .plusSeconds(seconds.toLong())
     }
 
-    private fun optionalBoolean(jsonObject: JSONObject?, key: String): Boolean? {
+    private fun cacheDurationLabel(durationMillis: Long): String {
+        (LIVE_SNAPSHOT_CACHE_OPTIONS + GTFS_TRIP_DETAIL_CACHE_OPTIONS + VEHICLE_POSITION_CACHE_OPTIONS)
+            .firstOrNull { it.millis == durationMillis }
+            ?.let { return it.label }
+
+        return when {
+            durationMillis <= 0L -> "Off"
+            durationMillis % 60_000L == 0L -> "${durationMillis / 60_000L} min"
+            durationMillis % 1_000L == 0L -> "${durationMillis / 1_000L} s"
+            else -> "${durationMillis} ms"
+        }
+    }
+
+    private fun nextCacheDuration(
+        currentMillis: Long,
+        options: List<CacheDurationOption>,
+    ): Long {
+        val currentIndex = options.indexOfFirst { it.millis == currentMillis }
+        return if (currentIndex == -1) {
+            options.first().millis
+        } else {
+            options[(currentIndex + 1) % options.size].millis
+        }
+    }
+
+    private fun optionalBoolean(
+        jsonObject: JSONObject?,
+        key: String,
+    ): Boolean? {
         if (jsonObject == null || !jsonObject.has(key) || jsonObject.isNull(key)) {
             return null
         }
         return jsonObject.getBoolean(key)
     }
 
-    private fun optionalInt(jsonObject: JSONObject?, key: String): Int? {
+    private fun optionalInt(
+        jsonObject: JSONObject?,
+        key: String,
+    ): Int? {
         if (jsonObject == null || !jsonObject.has(key) || jsonObject.isNull(key)) {
             return null
         }
         return jsonObject.getInt(key)
     }
 
-    private fun String.urlEncode(): String = URLEncoder.encode(this, StandardCharsets.UTF_8)
+    private fun migrateLegacyDirectionIfNeeded() {
+        if (prefs.contains(PREF_CURRENT_ROUTE_SELECTION)) {
+            return
+        }
+
+        val migratedSelection = when (prefs.getString(PREF_LEGACY_DIRECTION, null)) {
+            "to_palmovka" -> defaultRouteToPalmovka()
+            "to_nadrazi_vrsovice" -> defaultRouteToNadraziVrsovice()
+            else -> defaultRouteSelection()
+        }
+        prefs.edit {
+            putString(PREF_CURRENT_ROUTE_SELECTION, routeSelectionToJsonString(migratedSelection))
+        }
+        Log.d(TAG, "Migrated legacy direction preference to route selection.")
+    }
+
+    private fun rebindSelectionToCachedCatalog(selection: RouteSelection): RouteSelection {
+        val catalog = catalogRepository.getCachedCatalog() ?: return selection
+
+        fun rebindStopSelection(stopSelection: StopSelection): StopSelection {
+            val station = catalog.stationByKey(stopSelection.stationKey) ?: return stopSelection
+            return station.resolveSelection(stopSelection.platformKey)
+        }
+
+        val reboundLine = selection.line?.let { storedLine ->
+            catalog.lines
+                .firstOrNull { it.shortName.equals(storedLine.shortName, ignoreCase = true) }
+                ?.toSelection()
+                ?: storedLine
+        }
+
+        return RouteSelection(
+            origin = rebindStopSelection(selection.origin),
+            destination = rebindStopSelection(selection.destination),
+            line = reboundLine,
+        )
+    }
+
+    private fun routeSelectionToJsonString(selection: RouteSelection): String {
+        return JSONObject().apply {
+            put("origin", stopSelectionToJson(selection.origin))
+            put("destination", stopSelectionToJson(selection.destination))
+            put(
+                "line",
+                selection.line?.let { line ->
+                    JSONObject().apply {
+                        put("shortName", line.shortName)
+                        put("longName", line.longName)
+                    }
+                },
+            )
+        }.toString()
+    }
+
+    private fun routeSelectionFromJsonString(rawValue: String): RouteSelection? {
+        return runCatching {
+            val json = JSONObject(rawValue)
+            val origin = stopSelectionFromJson(json.getJSONObject("origin"))
+            val destination = stopSelectionFromJson(json.getJSONObject("destination"))
+            val line = json.optJSONObject("line")?.let { lineJson ->
+                LineSelection(
+                    shortName = lineJson.getString("shortName"),
+                    longName = lineJson.optString("longName").ifBlank { null },
+                )
+            }
+            RouteSelection(
+                origin = origin,
+                destination = destination,
+                line = line,
+            )
+        }.getOrNull()
+    }
+
+    private fun routeSelectionListToJsonString(selections: List<RouteSelection>): String {
+        return JSONArray().apply {
+            selections.forEach { selection ->
+                put(JSONObject(routeSelectionToJsonString(selection)))
+            }
+        }.toString()
+    }
+
+    private fun routeSelectionListFromJsonString(rawValue: String): List<RouteSelection> {
+        return runCatching {
+            val array = JSONArray(rawValue)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    routeSelectionFromJsonString(item.toString())?.let(::add)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun stopSelectionToJson(selection: StopSelection): JSONObject {
+        return JSONObject().apply {
+            put("stationKey", selection.stationKey)
+            put("stationName", selection.stationName)
+            put("platformKey", selection.platformKey)
+            put("platformLabel", selection.platformLabel)
+            put("stopIds", JSONArray(selection.stopIds))
+        }
+    }
+
+    private fun stopSelectionFromJson(json: JSONObject): StopSelection {
+        return StopSelection(
+            stationKey = json.getString("stationKey"),
+            stationName = json.getString("stationName"),
+            platformKey = json.optString("platformKey").ifBlank { null },
+            platformLabel = json.optString("platformLabel").ifBlank { null },
+            stopIds = buildList {
+                val array = json.optJSONArray("stopIds") ?: JSONArray()
+                for (index in 0 until array.length()) {
+                    val stopId = array.optString(index)
+                    if (stopId.isNotBlank()) {
+                        add(stopId)
+                    }
+                }
+            },
+        )
+    }
 }
 
 data class RouteDeparture(
     val tripId: String,
+    val lineShortName: String,
     val departureTime: ZonedDateTime,
     val countdownMinutes: Int,
     val delayMinutes: Int,
@@ -1035,7 +1160,10 @@ data class RouteDeparture(
     val destinationArrivalTime: ZonedDateTime?,
 ) {
     val compactLabel: String
-        get() = "$countdownMinutes [${delayMinutes.formatDelay()}]"
+        get() = "$lineShortName:$countdownMinutes [${delayMinutes.formatDelay()}]"
+
+    val lineLabel: String
+        get() = "Line $lineShortName"
 
     val countdownLabel: String
         get() = countdownMinutes.toString()
@@ -1066,6 +1194,17 @@ data class RouteDeparture(
             }
         }
 
+    fun clockLabel(
+        showSeconds: Boolean,
+        includeLine: Boolean,
+    ): String {
+        return if (includeLine) {
+            "$lineShortName  ${formatDisplayTime(departureTime, showSeconds)}"
+        } else {
+            formatDisplayTime(departureTime, showSeconds)
+        }
+    }
+
     fun activityStatusLabel(
         referenceNow: ZonedDateTime,
         showSeconds: Boolean,
@@ -1090,9 +1229,12 @@ data class RouteDeparture(
         }
     }
 
-    fun tileLineLabel(showSeconds: Boolean): String {
+    fun tileLineLabel(
+        showSeconds: Boolean,
+        includeLine: Boolean,
+    ): String {
         return buildString {
-            append(formatDisplayTime(departureTime, showSeconds))
+            append(clockLabel(showSeconds, includeLine))
             append("  ")
             append(listTimeLabel)
             delayBadgeLabel?.let { badge ->
@@ -1101,17 +1243,6 @@ data class RouteDeparture(
             }
         }
     }
-
-    val complicationDelayLabel: String?
-        get() = delayMinutes.takeIf { it > 0 }?.formatDelay()
-
-    val accessibilityLabel: String
-        get() = buildString {
-            append("Departure in $countdownMinutes minutes.")
-            if (delayMinutes > 0) {
-                append(" Delay ${delayMinutes.formatDelay()} minutes.")
-            }
-        }
 
     private fun liveCountdownLabel(referenceNow: ZonedDateTime): String {
         val remainingSeconds = max(0L, Duration.between(referenceNow, departureTime).seconds)
@@ -1140,25 +1271,40 @@ data class VehiclePositionDetails(
 )
 
 data class DepartureSnapshot(
-    val direction: RouteDirection,
+    val selection: RouteSelection,
     val departures: List<RouteDeparture>,
     val fetchedAt: ZonedDateTime,
     val isStale: Boolean = false,
     val errorMessage: String? = null,
 ) {
     fun tileLines(showSeconds: Boolean = false): List<String> {
-        val liveLines = departures.take(RouteRepository.MAX_RESULTS).map { it.tileLineLabel(showSeconds) }
+        val includeLine = !selection.usesFixedLine()
+        val liveLines = departures
+            .take(RouteRepository.MAX_RESULTS)
+            .map { it.tileLineLabel(showSeconds, includeLine) }
         return if (liveLines.isNotEmpty()) {
             liveLines
         } else {
-            List(RouteRepository.MAX_RESULTS) { if (showSeconds) "--:--:--  -- min" else "--:--  -- min" }
+            val placeholderPrefix = if (includeLine) "--  " else ""
+            List(RouteRepository.MAX_RESULTS) {
+                if (showSeconds) {
+                    "$placeholderPrefix--:--:--  -- min"
+                } else {
+                    "$placeholderPrefix--:--  -- min"
+                }
+            }
         }
     }
 
     fun debugSummary(): String {
-        return "direction=${direction.preferenceKey} departures=${departures.map { it.compactLabel }} isStale=$isStale errorMessage=$errorMessage"
+        return "route=${selection.routeSummaryWithPlatforms} departures=${departures.map { it.compactLabel }} isStale=$isStale errorMessage=$errorMessage"
     }
 }
+
+private data class DepartureQueryResult(
+    val departures: List<RouteDeparture>,
+    val referenceNow: ZonedDateTime,
+)
 
 private fun Int.formatDelay(): String {
     return if (this > 0) {
@@ -1168,27 +1314,11 @@ private fun Int.formatDelay(): String {
     }
 }
 
-private class ApiException(
-    val statusCode: Int,
-    val responseBody: String,
-    message: String,
-) : IOException(message)
-
-private data class ApiJsonResponse(
-    val body: JSONObject,
-)
-
-private data class DepartureQueryResult(
-    val departures: List<RouteDeparture>,
-    val referenceNow: ZonedDateTime,
-)
-
-private fun String.truncatedForLog(): String {
-    return if (length <= MAX_LOG_BODY_LENGTH) this else take(MAX_LOG_BODY_LENGTH) + "..."
-}
-
 private fun ApiException.isTimeFromOutOfRange(): Boolean {
     return statusCode == 400 &&
-        responseBody.contains("\"timeFrom\"", ignoreCase = true) &&
-        responseBody.contains("Parameter timeFrom must be in interval", ignoreCase = true)
+        responseBody.contains("timeFrom", ignoreCase = true) &&
+        (
+            responseBody.contains("Parameter timeFrom must be in interval", ignoreCase = true) ||
+                responseBody.contains("[-6h; +2d]", ignoreCase = true)
+            )
 }

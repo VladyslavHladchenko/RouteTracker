@@ -33,6 +33,7 @@ data class ResolvedDepartureTiming(
 
     fun toRouteDeparture(
         tripId: String,
+        lineShortName: String,
         referenceNow: ZonedDateTime,
         departureBoardDetails: DepartureBoardDetails,
         vehiclePositionDetails: VehiclePositionDetails?,
@@ -40,6 +41,7 @@ data class ResolvedDepartureTiming(
     ): RouteDeparture {
         return RouteDeparture(
             tripId = tripId,
+            lineShortName = lineShortName,
             departureTime = departureTime,
             countdownMinutes = countdownMinutes(referenceNow),
             delayMinutes = delayMinutes,

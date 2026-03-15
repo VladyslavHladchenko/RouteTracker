@@ -39,7 +39,7 @@ abstract class BaseCountdownComplicationService : SuspendingTimelineComplication
                 departureInstant = null,
                 fallbackText = previewText,
                 title = null,
-                contentDescription = "Next line 7 departure to N\u00E1dra\u017E\u00ED V\u0159\u0161ovice.",
+                contentDescription = "Next direct transport departure countdown.",
             ),
         )
     }

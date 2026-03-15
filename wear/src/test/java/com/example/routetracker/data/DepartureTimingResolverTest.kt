@@ -97,6 +97,7 @@ class DepartureTimingResolverTest {
             )
         ).toRouteDeparture(
             tripId = "trip-1",
+            lineShortName = "7",
             referenceNow = referenceNow,
             departureBoardDetails = DepartureBoardDetails(
                 departureTime = BoardStopTime(
@@ -135,6 +136,7 @@ class DepartureTimingResolverTest {
 
         val routeDeparture = RouteDeparture(
             tripId = "trip-2",
+            lineShortName = "7",
             departureTime = departureTime,
             countdownMinutes = 7,
             delayMinutes = 2,

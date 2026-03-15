@@ -26,9 +26,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -51,8 +51,8 @@ import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
 import androidx.wear.compose.ui.tooling.preview.WearPreviewFontScales
 import com.example.routetracker.data.DepartureSnapshot
 import com.example.routetracker.data.RouteDeparture
-import com.example.routetracker.data.RouteDirection
 import com.example.routetracker.data.RouteRepository
+import com.example.routetracker.data.RouteSelection
 import com.example.routetracker.presentation.theme.RouteTrackerTheme
 import java.time.LocalTime
 import java.time.ZonedDateTime
@@ -63,7 +63,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "RouteTrackerUi"
-private const val MAIN_SCREEN_INDEX = 5
+private const val MAIN_SCREEN_INDEX = 4
+private const val INITIAL_ACTIVITY_CENTER_INDEX = MAIN_SCREEN_INDEX + 1
 private const val HALF_MINUTE_MILLIS = 30_000L
 private val PREVIEW_UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val ACTIVITY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -81,7 +82,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun WearApp(routeRepo: RouteRepository) {
-    var selectedDirection by remember { mutableStateOf(routeRepo.getSelectedDirection()) }
+    var currentSelection by remember { mutableStateOf(routeRepo.getCurrentRouteSelection()) }
+    var favoriteRoutes by remember { mutableStateOf(routeRepo.getFavoriteRoutes()) }
     var autoUpdatesEnabled by remember { mutableStateOf(routeRepo.getAutoUpdatesEnabled()) }
     var showSecondsEnabled by remember { mutableStateOf(routeRepo.getShowSecondsEnabled()) }
     var detailsDialogAutoRefreshEnabled by remember { mutableStateOf(routeRepo.getDetailsDialogAutoRefreshEnabled()) }
@@ -89,6 +91,7 @@ fun WearApp(routeRepo: RouteRepository) {
     var gtfsTripDetailCacheLabel by remember { mutableStateOf(routeRepo.getGtfsTripDetailCacheLabel()) }
     var vehiclePositionCacheLabel by remember { mutableStateOf(routeRepo.getVehiclePositionCacheLabel()) }
     var isSettingsDialogOpen by remember { mutableStateOf(false) }
+    var isRouteSetupOpen by remember { mutableStateOf(false) }
     var selectedDeparture by remember { mutableStateOf<RouteDeparture?>(null) }
     var snapshot by remember { mutableStateOf<DepartureSnapshot?>(null) }
     var isRefreshing by remember { mutableStateOf(true) }
@@ -104,9 +107,15 @@ fun WearApp(routeRepo: RouteRepository) {
         vehiclePositionCacheLabel = routeRepo.getVehiclePositionCacheLabel()
     }
 
+    fun refreshRouteState() {
+        currentSelection = routeRepo.getCurrentRouteSelection()
+        favoriteRoutes = routeRepo.getFavoriteRoutes()
+    }
+
     fun applySnapshotState(newSnapshot: DepartureSnapshot?) {
         snapshot = newSnapshot
-        selectedDirection = newSnapshot?.direction ?: routeRepo.getSelectedDirection()
+        currentSelection = newSnapshot?.selection ?: routeRepo.getCurrentRouteSelection()
+        favoriteRoutes = routeRepo.getFavoriteRoutes()
         selectedDeparture = selectedDeparture?.let { current ->
             newSnapshot?.departures?.firstOrNull { it.tripId == current.tripId } ?: current
         }
@@ -117,31 +126,29 @@ fun WearApp(routeRepo: RouteRepository) {
         isRefreshing = true
         Log.d(
             TAG,
-            "Loading snapshot. forceRefresh=$forceRefresh requestSurfaceRefresh=$requestSurfaceRefresh direction=${selectedDirection.preferenceKey}",
+            "Loading snapshot. forceRefresh=$forceRefresh requestSurfaceRefresh=$requestSurfaceRefresh route=${currentSelection.routeSummaryWithPlatforms}",
         )
-        snapshot = withContext(Dispatchers.IO) {
+        val loadedSnapshot = withContext(Dispatchers.IO) {
             if (requestSurfaceRefresh) {
                 routeRepo.refreshDepartureSnapshot()
             } else {
                 routeRepo.getDepartureSnapshot(forceRefresh = forceRefresh)
             }
         }
-        applySnapshotState(snapshot)
-        Log.d(TAG, "Loaded snapshot. ${snapshot?.debugSummary()}")
+        applySnapshotState(loadedSnapshot)
+        Log.d(TAG, "Loaded snapshot. ${loadedSnapshot.debugSummary()}")
         isRefreshing = false
     }
 
-    suspend fun selectDirection(direction: RouteDirection) {
-        if (selectedDirection != direction) {
-            Log.d(TAG, "Direction button tapped. direction=${direction.preferenceKey}")
-            withContext(Dispatchers.IO) {
-                routeRepo.setSelectedDirection(direction)
-            }
-            selectedDirection = direction
+    suspend fun applyRouteSelection(selection: RouteSelection) {
+        Log.d(TAG, "Applying route selection ${selection.routeSummaryWithPlatforms}")
+        withContext(Dispatchers.IO) {
+            routeRepo.setCurrentRouteSelection(selection)
         }
+        refreshRouteState()
         loadSnapshot(
-            forceRefresh = autoUpdatesEnabled,
-            requestSurfaceRefresh = false,
+            forceRefresh = true,
+            requestSurfaceRefresh = true,
         )
     }
 
@@ -199,6 +206,12 @@ fun WearApp(routeRepo: RouteRepository) {
             routeRepo.cycleVehiclePositionCacheMillis()
         }
         refreshSettingsState()
+    }
+
+    LaunchedEffect(routeRepo) {
+        withContext(Dispatchers.IO) {
+            routeRepo.prefetchTransitCatalogIfNeeded()
+        }
     }
 
     LaunchedEffect(routeRepo, autoUpdatesEnabled) {
@@ -319,7 +332,7 @@ fun WearApp(routeRepo: RouteRepository) {
                 .background(MaterialTheme.colorScheme.background),
         ) {
             val listState = rememberScalingLazyListState(
-                initialCenterItemIndex = MAIN_SCREEN_INDEX,
+                initialCenterItemIndex = INITIAL_ACTIVITY_CENTER_INDEX,
             )
             ScalingLazyColumn(
                 modifier = Modifier
@@ -346,12 +359,12 @@ fun WearApp(routeRepo: RouteRepository) {
                 }
 
                 item {
-                    DirectionSelector(
-                        selectedDirection = selectedDirection,
-                        onSelectDirection = { direction ->
-                            coroutineScope.launch {
-                                selectDirection(direction)
-                            }
+                    RouteLauncherCard(
+                        currentSelection = currentSelection,
+                        favoriteCount = favoriteRoutes.size,
+                        onOpenRouteSetup = {
+                            Log.d(TAG, "Route setup launcher tapped.")
+                            isRouteSetupOpen = true
                         },
                     )
                 }
@@ -366,7 +379,7 @@ fun WearApp(routeRepo: RouteRepository) {
 
                 item {
                     HeaderCard(
-                        direction = selectedDirection,
+                        selection = currentSelection,
                         statusText = statusText,
                     )
                 }
@@ -374,6 +387,7 @@ fun WearApp(routeRepo: RouteRepository) {
                 if (departures.isNotEmpty()) {
                     items(departures.size) { index ->
                         DepartureRow(
+                            selection = currentSelection,
                             departure = departures[index],
                             routeRepo = routeRepo,
                             currentSystemTime = currentSystemTime,
@@ -412,6 +426,7 @@ fun WearApp(routeRepo: RouteRepository) {
 
             selectedDeparture?.let { departure ->
                 DepartureDetailsDialog(
+                    selection = currentSelection,
                     departure = departure,
                     routeRepo = routeRepo,
                     currentSystemTime = currentSystemTime,
@@ -427,6 +442,23 @@ fun WearApp(routeRepo: RouteRepository) {
                 modifier = Modifier
                     .fillMaxSize(),
             )
+
+            if (isRouteSetupOpen) {
+                RouteSetupOverlay(
+                    routeRepo = routeRepo,
+                    currentSelection = currentSelection,
+                    favoriteRoutes = favoriteRoutes,
+                    onApplySelection = { selection ->
+                        coroutineScope.launch {
+                            applyRouteSelection(selection)
+                        }
+                    },
+                    onDismiss = {
+                        refreshRouteState()
+                        isRouteSetupOpen = false
+                    },
+                )
+            }
         }
     }
 }
@@ -661,7 +693,7 @@ private fun formatActivityClock(
 
 @Composable
 private fun HeaderCard(
-    direction: RouteDirection,
+    selection: RouteSelection,
     statusText: String,
 ) {
     Column(
@@ -676,14 +708,14 @@ private fun HeaderCard(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Line ${RouteRepository.LINE_NAME}",
+            text = selection.headerLineLabel,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
         )
         Text(
-            text = "To ${direction.tileLabel}",
+            text = selection.routeSummaryLabel,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
@@ -699,9 +731,10 @@ private fun HeaderCard(
 }
 
 @Composable
-private fun DirectionSelector(
-    selectedDirection: RouteDirection,
-    onSelectDirection: (RouteDirection) -> Unit,
+private fun RouteLauncherCard(
+    currentSelection: RouteSelection,
+    favoriteCount: Int,
+    onOpenRouteSetup: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -714,56 +747,42 @@ private fun DirectionSelector(
             .padding(8.dp),
     ) {
         Text(
-            text = "Direction",
+            text = "Route",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RouteDirection.entries.forEach { direction ->
-                DirectionButton(
-                    direction = direction,
-                    isSelected = direction == selectedDirection,
-                    onClick = { onSelectDirection(direction) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DirectionButton(
-    direction: RouteDirection,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Button(
-        onClick = onClick,
-        modifier = modifier,
-        colors = if (isSelected) {
-            ButtonDefaults.filledTonalButtonColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        } else {
-            ButtonDefaults.filledTonalButtonColors(
+        Button(
+            onClick = onOpenRouteSetup,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp),
+            colors = ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface,
-            )
-        },
-    ) {
-        Text(direction.tileLabel)
+            ),
+        ) {
+            Text(currentSelection.routeSummaryWithPlatforms)
+        }
+        Text(
+            text = if (favoriteCount == 0) {
+                currentSelection.line?.displayLabel ?: "Any line"
+            } else {
+                "$favoriteCount favorite routes"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp),
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
 @Composable
 private fun DepartureRow(
+    selection: RouteSelection,
     departure: RouteDeparture,
     routeRepo: RouteRepository,
     currentSystemTime: ZonedDateTime,
@@ -782,7 +801,10 @@ private fun DepartureRow(
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Text(
-            text = routeRepo.formatDepartureClockTime(departure),
+            text = departure.clockLabel(
+                showSeconds = showSecondsEnabled,
+                includeLine = !selection.usesFixedLine(),
+            ),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -799,6 +821,7 @@ private fun DepartureRow(
 
 @Composable
 private fun DepartureDetailsDialog(
+    selection: RouteSelection,
     departure: RouteDeparture,
     routeRepo: RouteRepository,
     currentSystemTime: ZonedDateTime,
@@ -837,7 +860,10 @@ private fun DepartureDetailsDialog(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = routeRepo.formatDepartureClockTime(departure),
+                text = departure.clockLabel(
+                    showSeconds = showSecondsEnabled,
+                    includeLine = !selection.usesFixedLine(),
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.fillMaxWidth(),
@@ -854,6 +880,10 @@ private fun DepartureDetailsDialog(
                     .fillMaxWidth()
                     .padding(top = 2.dp),
                 textAlign = TextAlign.Center,
+            )
+            DetailValueRow(
+                label = "Line",
+                value = departure.lineLabel,
             )
             DetailValueRow(
                 label = "Destination arrival",
@@ -1067,7 +1097,7 @@ fun DefaultPreview() {
         ScalingLazyColumn(
             modifier = Modifier.background(MaterialTheme.colorScheme.background),
             state = rememberScalingLazyListState(
-                initialCenterItemIndex = MAIN_SCREEN_INDEX,
+                initialCenterItemIndex = INITIAL_ACTIVITY_CENTER_INDEX,
             ),
         ) {
             item {
@@ -1082,15 +1112,15 @@ fun DefaultPreview() {
                 )
             }
             item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {}
+                RouteLauncherCard(
+                    currentSelection = previewSnapshot.selection,
+                    favoriteCount = 2,
+                    onOpenRouteSetup = {},
+                )
             }
             item {
                 HeaderCard(
-                    direction = previewSnapshot.direction,
+                    selection = previewSnapshot.selection,
                     statusText = snapshotStatusText(
                         snapshot = previewSnapshot,
                         autoUpdatesEnabled = true,
@@ -1100,14 +1130,9 @@ fun DefaultPreview() {
                     ),
                 )
             }
-            item {
-                DirectionSelector(
-                    selectedDirection = previewSnapshot.direction,
-                    onSelectDirection = {},
-                )
-            }
             items(previewSnapshot.departures.size) { index ->
                 DepartureRow(
+                    selection = previewSnapshot.selection,
                     departure = previewSnapshot.departures[index],
                     routeRepo = previewRepository,
                     currentSystemTime = previewSnapshot.fetchedAt,

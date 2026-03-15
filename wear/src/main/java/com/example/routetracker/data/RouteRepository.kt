@@ -296,6 +296,10 @@ class RouteRepository(private val context: Context) {
         return catalogRepository.getCachedCatalog()
     }
 
+    fun clearTransitCatalogMemoryCache() {
+        catalogRepository.clearMemoryCache()
+    }
+
     fun isTransitCatalogRefreshDue(): Boolean {
         return catalogRepository.isCatalogRefreshDue()
     }
@@ -893,6 +897,7 @@ class RouteRepository(private val context: Context) {
             val vehiclePosition = apiClient.getObject(
                 "/v2/vehiclepositions/$tripId",
                 listOf("preferredTimezone" to "Europe/Prague"),
+                retryOnRateLimit = false,
             ).body
             if (ttlMillis > 0L) {
                 vehiclePositionCache.put(
@@ -903,8 +908,12 @@ class RouteRepository(private val context: Context) {
             }
             vehiclePosition
         } catch (error: ApiException) {
-            if (error.statusCode == 404) {
-                Log.d(TAG, "Vehicle position not found for tripId=$tripId")
+            if (error.statusCode == 404 || error.statusCode == 429) {
+                if (error.statusCode == 404) {
+                    Log.d(TAG, "Vehicle position not found for tripId=$tripId")
+                } else {
+                    Log.w(TAG, "Vehicle position rate-limited for tripId=$tripId. Falling back to departure board data.")
+                }
                 if (ttlMillis > 0L) {
                     vehiclePositionCache.put(
                         key = tripId,

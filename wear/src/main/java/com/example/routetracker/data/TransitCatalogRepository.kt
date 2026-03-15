@@ -56,6 +56,12 @@ class TransitCatalogRepository(
         }
     }
 
+    fun clearMemoryCache() {
+        synchronized(this) {
+            cachedCatalog = null
+        }
+    }
+
     fun getLastCatalogFetchedAt(): ZonedDateTime? {
         return readCatalogMetadataFetchedAt() ?: getCachedCatalog()?.fetchedAt
     }

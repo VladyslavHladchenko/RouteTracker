@@ -31,8 +31,9 @@ class GolemioApiClient {
     fun getObject(
         path: String,
         params: List<Pair<String, String>> = emptyList(),
+        retryOnRateLimit: Boolean = true,
     ): ApiObjectResponse {
-        val response = execute(path, params)
+        val response = execute(path, params, retryOnRateLimit)
         return ApiObjectResponse(
             body = JSONObject(response.body),
             cacheControl = response.cacheControl,
@@ -42,8 +43,9 @@ class GolemioApiClient {
     fun getArray(
         path: String,
         params: List<Pair<String, String>> = emptyList(),
+        retryOnRateLimit: Boolean = true,
     ): ApiArrayResponse {
-        val response = execute(path, params)
+        val response = execute(path, params, retryOnRateLimit)
         return ApiArrayResponse(
             body = JSONArray(response.body),
             cacheControl = response.cacheControl,
@@ -53,6 +55,7 @@ class GolemioApiClient {
     private fun execute(
         path: String,
         params: List<Pair<String, String>>,
+        retryOnRateLimit: Boolean,
     ): RawApiResponse {
         val query = params.joinToString("&") { (key, value) ->
             "${key.urlEncode()}=${value.urlEncode()}"
@@ -87,6 +90,14 @@ class GolemioApiClient {
                     val retryAfterSeconds = connection.getHeaderField("Retry-After")
                         ?.toDoubleOrNull()
                         ?: (1.5 * (attempt + 1))
+                    if (!retryOnRateLimit) {
+                        Log.w(API_TAG, "Rate limited on $path. Skipping retries for this request.")
+                        throw ApiException(
+                            statusCode = statusCode,
+                            message = "HTTP $statusCode for $path",
+                            responseBody = responseBody,
+                        )
+                    }
                     Log.w(API_TAG, "Rate limited on $path. retryAfterSeconds=$retryAfterSeconds")
                     Thread.sleep(min((retryAfterSeconds * 1_000).toLong(), 6_000L))
                     return@repeat

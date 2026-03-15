@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,11 +19,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,7 +34,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import androidx.navigation.NavController
 import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.CurvedTextStyle
@@ -47,6 +48,9 @@ import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.navigation.SwipeDismissableNavHost
+import androidx.wear.compose.navigation.composable
+import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
 import androidx.wear.compose.ui.tooling.preview.WearPreviewFontScales
 import com.example.routetracker.data.DepartureSnapshot
@@ -66,6 +70,10 @@ private const val TAG = "RouteTrackerUi"
 private const val MAIN_SCREEN_INDEX = 3
 private const val INITIAL_ACTIVITY_CENTER_INDEX = MAIN_SCREEN_INDEX + 1
 private const val HALF_MINUTE_MILLIS = 30_000L
+private const val BOARD_ROUTE = "board"
+private const val SETTINGS_ROUTE = "settings"
+private const val ROUTE_SETUP_ROUTE = "route_setup"
+private const val TRIP_DETAILS_ROUTE = "trip_details"
 private val PREVIEW_UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val ACTIVITY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val ACTIVITY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
@@ -92,13 +100,27 @@ fun WearApp(routeRepo: RouteRepository) {
     var liveSnapshotCacheLabel by remember { mutableStateOf(routeRepo.getLiveSnapshotCacheLabel()) }
     var gtfsTripDetailCacheLabel by remember { mutableStateOf(routeRepo.getGtfsTripDetailCacheLabel()) }
     var vehiclePositionCacheLabel by remember { mutableStateOf(routeRepo.getVehiclePositionCacheLabel()) }
-    var isSettingsDialogOpen by remember { mutableStateOf(false) }
-    var isRouteSetupOpen by remember { mutableStateOf(false) }
     var selectedDeparture by remember { mutableStateOf<RouteDeparture?>(null) }
     var snapshot by remember { mutableStateOf<DepartureSnapshot?>(null) }
     var isRefreshing by remember { mutableStateOf(true) }
     var currentSystemTime by remember { mutableStateOf(ZonedDateTime.now()) }
     val coroutineScope = rememberCoroutineScope()
+    val navController = rememberSwipeDismissableNavController()
+    var currentScreenRoute by remember { mutableStateOf(BOARD_ROUTE) }
+    val latestSelection = rememberUpdatedState(currentSelection)
+    val latestFavoriteRoutes = rememberUpdatedState(favoriteRoutes)
+    val latestAutoUpdatesEnabled = rememberUpdatedState(autoUpdatesEnabled)
+    val latestShowSecondsEnabled = rememberUpdatedState(showSecondsEnabled)
+    val latestDetailsDialogAutoRefreshEnabled = rememberUpdatedState(detailsDialogAutoRefreshEnabled)
+    val latestVerifiedMatchCount = rememberUpdatedState(verifiedMatchCount)
+    val latestTransitCatalogLastRefreshLabel = rememberUpdatedState(transitCatalogLastRefreshLabel)
+    val latestLiveSnapshotCacheLabel = rememberUpdatedState(liveSnapshotCacheLabel)
+    val latestGtfsTripDetailCacheLabel = rememberUpdatedState(gtfsTripDetailCacheLabel)
+    val latestVehiclePositionCacheLabel = rememberUpdatedState(vehiclePositionCacheLabel)
+    val latestSelectedDeparture = rememberUpdatedState(selectedDeparture)
+    val latestSnapshot = rememberUpdatedState(snapshot)
+    val latestIsRefreshing = rememberUpdatedState(isRefreshing)
+    val latestCurrentSystemTime = rememberUpdatedState(currentSystemTime)
 
     fun refreshSettingsState() {
         autoUpdatesEnabled = routeRepo.getAutoUpdatesEnabled()
@@ -126,22 +148,34 @@ fun WearApp(routeRepo: RouteRepository) {
         refreshSettingsState()
     }
 
+    fun showPendingRouteSelection(selection: RouteSelection) {
+        currentSelection = selection
+        snapshot = null
+        selectedDeparture = null
+        isRefreshing = true
+    }
+
     suspend fun loadSnapshot(forceRefresh: Boolean, requestSurfaceRefresh: Boolean) {
         isRefreshing = true
-        Log.d(
-            TAG,
-            "Loading snapshot. forceRefresh=$forceRefresh requestSurfaceRefresh=$requestSurfaceRefresh route=${currentSelection.routeSummaryWithPlatforms}",
-        )
-        val loadedSnapshot = withContext(Dispatchers.IO) {
-            if (requestSurfaceRefresh) {
-                routeRepo.refreshDepartureSnapshot()
-            } else {
-                routeRepo.getDepartureSnapshot(forceRefresh = forceRefresh)
+        try {
+            Log.d(
+                TAG,
+                "Loading snapshot. forceRefresh=$forceRefresh requestSurfaceRefresh=$requestSurfaceRefresh route=${currentSelection.routeSummaryWithPlatforms}",
+            )
+            val loadedSnapshot = withContext(Dispatchers.IO) {
+                if (requestSurfaceRefresh) {
+                    routeRepo.refreshDepartureSnapshot()
+                } else {
+                    routeRepo.getDepartureSnapshot(forceRefresh = forceRefresh)
+                }
             }
+            applySnapshotState(loadedSnapshot)
+            Log.d(TAG, "Loaded snapshot. ${loadedSnapshot.debugSummary()}")
+        } catch (error: Exception) {
+            Log.e(TAG, "Snapshot load failed.", error)
+        } finally {
+            isRefreshing = false
         }
-        applySnapshotState(loadedSnapshot)
-        Log.d(TAG, "Loaded snapshot. ${loadedSnapshot.debugSummary()}")
-        isRefreshing = false
     }
 
     suspend fun applyRouteSelection(selection: RouteSelection) {
@@ -229,6 +263,19 @@ fun WearApp(routeRepo: RouteRepository) {
         refreshSettingsState()
     }
 
+    DisposableEffect(navController) {
+        val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+            currentScreenRoute = destination.route ?: BOARD_ROUTE
+            if (currentScreenRoute != TRIP_DETAILS_ROUTE) {
+                selectedDeparture = null
+            }
+        }
+        navController.addOnDestinationChangedListener(listener)
+        onDispose {
+            navController.removeOnDestinationChangedListener(listener)
+        }
+    }
+
     LaunchedEffect(routeRepo, autoUpdatesEnabled) {
         loadSnapshot(forceRefresh = false, requestSurfaceRefresh = false)
         while (autoUpdatesEnabled) {
@@ -249,20 +296,32 @@ fun WearApp(routeRepo: RouteRepository) {
         }
     }
 
-    LaunchedEffect(routeRepo, selectedDeparture?.tripId, detailsDialogAutoRefreshEnabled, autoUpdatesEnabled) {
+    LaunchedEffect(
+        routeRepo,
+        selectedDeparture?.tripId,
+        detailsDialogAutoRefreshEnabled,
+        autoUpdatesEnabled,
+        currentScreenRoute,
+    ) {
         val trackedTripId = selectedDeparture?.tripId ?: return@LaunchedEffect
-        if (!detailsDialogAutoRefreshEnabled || !autoUpdatesEnabled) {
+        if (
+            currentScreenRoute != TRIP_DETAILS_ROUTE ||
+            !detailsDialogAutoRefreshEnabled ||
+            !autoUpdatesEnabled
+        ) {
             return@LaunchedEffect
         }
 
         while (
             selectedDeparture?.tripId == trackedTripId &&
+            currentScreenRoute == TRIP_DETAILS_ROUTE &&
             detailsDialogAutoRefreshEnabled &&
             autoUpdatesEnabled
         ) {
             delay(RouteRepository.DETAILS_DIALOG_REFRESH_INTERVAL_MILLIS)
             if (
                 selectedDeparture?.tripId != trackedTripId ||
+                currentScreenRoute != TRIP_DETAILS_ROUTE ||
                 !detailsDialogAutoRefreshEnabled ||
                 !autoUpdatesEnabled
             ) {
@@ -303,163 +362,198 @@ fun WearApp(routeRepo: RouteRepository) {
     )
 
     RouteTrackerTheme {
-        if (isSettingsDialogOpen) {
-            SettingsDialog(
-                showSecondsEnabled = showSecondsEnabled,
-                detailsDialogAutoRefreshEnabled = detailsDialogAutoRefreshEnabled,
-                verifiedMatchCount = verifiedMatchCount,
-                transitCatalogLastRefreshLabel = transitCatalogLastRefreshLabel,
-                liveSnapshotCacheLabel = liveSnapshotCacheLabel,
-                gtfsTripDetailCacheLabel = gtfsTripDetailCacheLabel,
-                vehiclePositionCacheLabel = vehiclePositionCacheLabel,
-                onToggleShowSeconds = {
-                    coroutineScope.launch {
-                        toggleShowSeconds()
-                    }
-                },
-                onToggleDetailsDialogAutoRefresh = {
-                    coroutineScope.launch {
-                        toggleDetailsDialogAutoRefresh()
-                    }
-                },
-                onCycleLiveSnapshotCache = {
-                    coroutineScope.launch {
-                        cycleLiveSnapshotCache()
-                    }
-                },
-                onDecreaseVerifiedMatchCount = {
-                    coroutineScope.launch {
-                        adjustVerifiedMatchCount(-1)
-                    }
-                },
-                onIncreaseVerifiedMatchCount = {
-                    coroutineScope.launch {
-                        adjustVerifiedMatchCount(1)
-                    }
-                },
-                onRefreshTransitCatalog = {
-                    coroutineScope.launch {
-                        refreshTransitCatalog()
-                    }
-                },
-                onCycleGtfsTripDetailCache = {
-                    coroutineScope.launch {
-                        cycleGtfsTripDetailCache()
-                    }
-                },
-                onCycleVehiclePositionCache = {
-                    coroutineScope.launch {
-                        cycleVehiclePositionCache()
-                    }
-                },
-                onDismiss = {
-                    isSettingsDialogOpen = false
-                },
-            )
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
         ) {
-            val listState = rememberScalingLazyListState(
-                initialCenterItemIndex = INITIAL_ACTIVITY_CENTER_INDEX,
-            )
-            ScalingLazyColumn(
+            // Keep these surfaces as real Wear navigation destinations so swipe-dismiss
+            // returns to the live board instead of finishing the activity.
+            SwipeDismissableNavHost(
+                navController = navController,
+                startDestination = BOARD_ROUTE,
                 modifier = Modifier
                     .fillMaxSize(),
-                state = listState,
             ) {
-                item {
-                    SettingsLauncherButton(
-                        onOpenSettings = {
-                            isSettingsDialogOpen = true
-                        },
+                composable(BOARD_ROUTE) {
+                    val selectionForBoard = latestSelection.value
+                    val snapshotForBoard = latestSnapshot.value
+                    val isRefreshingForBoard = latestIsRefreshing.value
+                    val currentSystemTimeForBoard = latestCurrentSystemTime.value
+                    val showSecondsForBoard = latestShowSecondsEnabled.value
+                    val autoUpdatesForBoard = latestAutoUpdatesEnabled.value
+                    val departuresForBoard = snapshotForBoard?.departures.orEmpty()
+                    val updatedLabelForBoard = snapshotForBoard?.fetchedAt?.let { routeRepo.formatStatusTime(it) }
+                    val statusTextForBoard = snapshotStatusText(
+                        snapshot = snapshotForBoard,
+                        autoUpdatesEnabled = autoUpdatesForBoard,
+                        isRefreshing = isRefreshingForBoard,
+                        hasDepartures = departuresForBoard.isNotEmpty(),
+                        updatedLabel = updatedLabelForBoard,
                     )
-                }
 
-                item {
-                    AutoUpdatesCard(
-                        autoUpdatesEnabled = autoUpdatesEnabled,
+                    LaunchedEffect(snapshotForBoard, isRefreshingForBoard) {
+                        if (snapshotForBoard == null && !isRefreshingForBoard) {
+                            loadSnapshot(forceRefresh = false, requestSurfaceRefresh = false)
+                        }
+                    }
+                    BoardScreen(
+                        selection = selectionForBoard,
+                        departures = departuresForBoard,
+                        snapshot = snapshotForBoard,
+                        statusText = statusTextForBoard,
+                        routeRepo = routeRepo,
+                        currentSystemTime = currentSystemTimeForBoard,
+                        showSecondsEnabled = showSecondsForBoard,
+                        autoUpdatesEnabled = autoUpdatesForBoard,
+                        isRefreshing = isRefreshingForBoard,
+                        onOpenSettings = {
+                            navController.navigate(SETTINGS_ROUTE)
+                        },
                         onToggleAutoUpdates = {
                             coroutineScope.launch {
                                 toggleAutoUpdates()
                             }
                         },
-                    )
-                }
-
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                    ) {}
-                }
-
-                item {
-                    HeaderCard(
-                        selection = currentSelection,
-                        statusText = statusText,
                         onOpenRouteSetup = {
                             Log.d(TAG, "Header route launcher tapped.")
-                            isRouteSetupOpen = true
+                            navController.navigate(ROUTE_SETUP_ROUTE)
                         },
-                    )
-                }
-
-                if (departures.isNotEmpty()) {
-                    items(departures.size) { index ->
-                        DepartureRow(
-                            selection = currentSelection,
-                            departure = departures[index],
-                            routeRepo = routeRepo,
-                            currentSystemTime = currentSystemTime,
-                            showSecondsEnabled = showSecondsEnabled,
-                            onClick = {
-                                selectedDeparture = departures[index]
-                            },
-                        )
-                    }
-                } else {
-                    item {
-                        EmptyStateCard(snapshot?.errorMessage ?: "No direct departures right now.")
-                    }
-                }
-
-                item {
-                    Button(
-                        onClick = {
+                        onOpenDepartureDetails = { departure ->
+                            selectedDeparture = departure
+                            navController.navigate(TRIP_DETAILS_ROUTE)
+                        },
+                        onRefresh = {
                             Log.d(TAG, "Refresh button tapped.")
                             coroutineScope.launch {
                                 loadSnapshot(forceRefresh = true, requestSurfaceRefresh = true)
                             }
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                        ),
-                    ) {
-                        Text(if (isRefreshing) "Refreshing..." else "Refresh")
+                    )
+                }
+
+                composable(SETTINGS_ROUTE) {
+                    val showSecondsForSettings = latestShowSecondsEnabled.value
+                    val autoRefreshForSettings = latestDetailsDialogAutoRefreshEnabled.value
+                    val verifiedMatchesForSettings = latestVerifiedMatchCount.value
+                    val catalogRefreshLabelForSettings = latestTransitCatalogLastRefreshLabel.value
+                    val liveSnapshotCacheForSettings = latestLiveSnapshotCacheLabel.value
+                    val gtfsTripDetailCacheForSettings = latestGtfsTripDetailCacheLabel.value
+                    val vehiclePositionCacheForSettings = latestVehiclePositionCacheLabel.value
+
+                    SettingsScreen(
+                        showSecondsEnabled = showSecondsForSettings,
+                        detailsDialogAutoRefreshEnabled = autoRefreshForSettings,
+                        verifiedMatchCount = verifiedMatchesForSettings,
+                        transitCatalogLastRefreshLabel = catalogRefreshLabelForSettings,
+                        liveSnapshotCacheLabel = liveSnapshotCacheForSettings,
+                        gtfsTripDetailCacheLabel = gtfsTripDetailCacheForSettings,
+                        vehiclePositionCacheLabel = vehiclePositionCacheForSettings,
+                        onToggleShowSeconds = {
+                            coroutineScope.launch {
+                                toggleShowSeconds()
+                            }
+                        },
+                        onToggleDetailsDialogAutoRefresh = {
+                            coroutineScope.launch {
+                                toggleDetailsDialogAutoRefresh()
+                            }
+                        },
+                        onCycleLiveSnapshotCache = {
+                            coroutineScope.launch {
+                                cycleLiveSnapshotCache()
+                            }
+                        },
+                        onDecreaseVerifiedMatchCount = {
+                            coroutineScope.launch {
+                                adjustVerifiedMatchCount(-1)
+                            }
+                        },
+                        onIncreaseVerifiedMatchCount = {
+                            coroutineScope.launch {
+                                adjustVerifiedMatchCount(1)
+                            }
+                        },
+                        onRefreshTransitCatalog = {
+                            coroutineScope.launch {
+                                refreshTransitCatalog()
+                            }
+                        },
+                        onCycleGtfsTripDetailCache = {
+                            coroutineScope.launch {
+                                cycleGtfsTripDetailCache()
+                            }
+                        },
+                        onCycleVehiclePositionCache = {
+                            coroutineScope.launch {
+                                cycleVehiclePositionCache()
+                            }
+                        },
+                        onDismiss = {
+                            navController.popBackStack()
+                        },
+                    )
+                }
+
+                composable(ROUTE_SETUP_ROUTE) {
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            refreshRouteState()
+                            routeRepo.clearTransitCatalogMemoryCache()
+                        }
+                    }
+                    val selectionForRouteSetup = latestSelection.value
+                    val favoritesForRouteSetup = latestFavoriteRoutes.value
+                    RouteSetupScreen(
+                        routeRepo = routeRepo,
+                        currentSelection = selectionForRouteSetup,
+                        favoriteRoutes = favoritesForRouteSetup,
+                        onApplySelection = { selection ->
+                            coroutineScope.launch {
+                                showPendingRouteSelection(selection)
+                                navController.popBackStack()
+                                try {
+                                    applyRouteSelection(selection)
+                                } catch (error: Exception) {
+                                    Log.e(
+                                        TAG,
+                                        "Failed to apply route selection ${selection.routeSummaryWithPlatforms}.",
+                                        error,
+                                    )
+                                    refreshRouteState()
+                                    isRefreshing = false
+                                }
+                            }
+                        },
+                        onDismiss = {
+                            refreshRouteState()
+                            navController.popBackStack()
+                        },
+                    )
+                }
+
+                composable(TRIP_DETAILS_ROUTE) {
+                    val departure = latestSelectedDeparture.value
+                    if (departure == null) {
+                        LaunchedEffect(Unit) {
+                            navController.popBackStack()
+                        }
+                    } else {
+                        val selectionForDetails = latestSelection.value
+                        val currentSystemTimeForDetails = latestCurrentSystemTime.value
+                        val showSecondsForDetails = latestShowSecondsEnabled.value
+                        DepartureDetailsScreen(
+                            selection = selectionForDetails,
+                            departure = departure,
+                            routeRepo = routeRepo,
+                            currentSystemTime = currentSystemTimeForDetails,
+                            showSecondsEnabled = showSecondsForDetails,
+                            onDismiss = {
+                                navController.popBackStack()
+                            },
+                        )
                     }
                 }
-            }
-
-            selectedDeparture?.let { departure ->
-                DepartureDetailsDialog(
-                    selection = currentSelection,
-                    departure = departure,
-                    routeRepo = routeRepo,
-                    currentSystemTime = currentSystemTime,
-                    showSecondsEnabled = showSecondsEnabled,
-                    onDismiss = {
-                        selectedDeparture = null
-                    },
-                )
             }
 
             ActivityClockChip(
@@ -467,23 +561,6 @@ fun WearApp(routeRepo: RouteRepository) {
                 modifier = Modifier
                     .fillMaxSize(),
             )
-
-            if (isRouteSetupOpen) {
-                RouteSetupOverlay(
-                    routeRepo = routeRepo,
-                    currentSelection = currentSelection,
-                    favoriteRoutes = favoriteRoutes,
-                    onApplySelection = { selection ->
-                        coroutineScope.launch {
-                            applyRouteSelection(selection)
-                        }
-                    },
-                    onDismiss = {
-                        refreshRouteState()
-                        isRouteSetupOpen = false
-                    },
-                )
-            }
         }
     }
 }
@@ -494,6 +571,110 @@ private fun millisUntilNextHalfMinute(nowMillis: Long = System.currentTimeMillis
         HALF_MINUTE_MILLIS
     } else {
         HALF_MINUTE_MILLIS - remainder
+    }
+}
+
+@Composable
+private fun BoardScreen(
+    selection: RouteSelection,
+    departures: List<RouteDeparture>,
+    snapshot: DepartureSnapshot?,
+    statusText: String,
+    routeRepo: RouteRepository,
+    currentSystemTime: ZonedDateTime,
+    showSecondsEnabled: Boolean,
+    autoUpdatesEnabled: Boolean,
+    isRefreshing: Boolean,
+    onOpenSettings: () -> Unit,
+    onToggleAutoUpdates: () -> Unit,
+    onOpenRouteSetup: () -> Unit,
+    onOpenDepartureDetails: (RouteDeparture) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val listState = rememberScalingLazyListState(
+        initialCenterItemIndex = INITIAL_ACTIVITY_CENTER_INDEX,
+    )
+    val emptyStateMessage = when {
+        snapshot == null && isRefreshing -> "Loading live departures..."
+        snapshot?.errorMessage != null -> snapshot.errorMessage
+        else -> "No direct departures right now."
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        ScalingLazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            state = listState,
+        ) {
+            item {
+                SettingsLauncherButton(
+                    onOpenSettings = onOpenSettings,
+                )
+            }
+
+            item {
+                AutoUpdatesCard(
+                    autoUpdatesEnabled = autoUpdatesEnabled,
+                    onToggleAutoUpdates = onToggleAutoUpdates,
+                )
+            }
+
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                ) {}
+            }
+
+            item {
+                HeaderCard(
+                    selection = selection,
+                    statusText = statusText,
+                    onOpenRouteSetup = onOpenRouteSetup,
+                )
+            }
+
+            if (departures.isNotEmpty()) {
+                items(
+                    items = departures,
+                    key = { departure -> departure.tripId },
+                ) { departure ->
+                    DepartureRow(
+                        selection = selection,
+                        departure = departure,
+                        routeRepo = routeRepo,
+                        currentSystemTime = currentSystemTime,
+                        showSecondsEnabled = showSecondsEnabled,
+                        onClick = {
+                            onOpenDepartureDetails(departure)
+                        },
+                    )
+                }
+            } else {
+                item {
+                    EmptyStateCard(emptyStateMessage)
+                }
+            }
+
+            item {
+                Button(
+                    onClick = onRefresh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                ) {
+                    Text(if (isRefreshing) "Refreshing..." else "Refresh")
+                }
+            }
+        }
     }
 }
 
@@ -561,7 +742,7 @@ private fun ActivityClockChip(
 }
 
 @Composable
-private fun SettingsDialog(
+private fun SettingsScreen(
     showSecondsEnabled: Boolean,
     detailsDialogAutoRefreshEnabled: Boolean,
     verifiedMatchCount: Int,
@@ -579,11 +760,16 @@ private fun SettingsDialog(
     onCycleVehiclePositionCache: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp)
                 .verticalScroll(rememberScrollState())
                 .background(
                     color = MaterialTheme.colorScheme.surfaceContainer,
@@ -875,7 +1061,7 @@ private fun DepartureRow(
 }
 
 @Composable
-private fun DepartureDetailsDialog(
+private fun DepartureDetailsScreen(
     selection: RouteSelection,
     departure: RouteDeparture,
     routeRepo: RouteRepository,
@@ -883,18 +1069,10 @@ private fun DepartureDetailsDialog(
     showSecondsEnabled: Boolean,
     onDismiss: () -> Unit,
 ) {
-    val dismissInteractionSource = remember { MutableInteractionSource() }
-    val cardInteractionSource = remember { MutableInteractionSource() }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .clickable(
-                interactionSource = dismissInteractionSource,
-                indication = null,
-                onClick = onDismiss,
-            )
+            .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 10.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -905,11 +1083,6 @@ private fun DepartureDetailsDialog(
                 .background(
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(28.dp),
-                )
-                .clickable(
-                    interactionSource = cardInteractionSource,
-                    indication = null,
-                    onClick = {},
                 )
                 .padding(horizontal = 14.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1149,46 +1322,27 @@ fun DefaultPreview() {
     val previewRepository = remember { RouteRepository(previewContext) }
 
     RouteTrackerTheme {
-        ScalingLazyColumn(
-            modifier = Modifier.background(MaterialTheme.colorScheme.background),
-            state = rememberScalingLazyListState(
-                initialCenterItemIndex = INITIAL_ACTIVITY_CENTER_INDEX,
+        BoardScreen(
+            selection = previewSnapshot.selection,
+            departures = previewSnapshot.departures,
+            snapshot = previewSnapshot,
+            statusText = snapshotStatusText(
+                snapshot = previewSnapshot,
+                autoUpdatesEnabled = true,
+                isRefreshing = false,
+                hasDepartures = previewSnapshot.departures.isNotEmpty(),
+                updatedLabel = previewSnapshot.fetchedAt.format(PREVIEW_UPDATE_TIME_FORMATTER),
             ),
-        ) {
-            item {
-                SettingsLauncherButton(
-                    onOpenSettings = {},
-                )
-            }
-            item {
-                AutoUpdatesCard(
-                    autoUpdatesEnabled = true,
-                    onToggleAutoUpdates = {},
-                )
-            }
-            item {
-                HeaderCard(
-                    selection = previewSnapshot.selection,
-                    statusText = snapshotStatusText(
-                        snapshot = previewSnapshot,
-                        autoUpdatesEnabled = true,
-                        isRefreshing = false,
-                        hasDepartures = previewSnapshot.departures.isNotEmpty(),
-                        updatedLabel = previewSnapshot.fetchedAt.format(PREVIEW_UPDATE_TIME_FORMATTER),
-                    ),
-                    onOpenRouteSetup = {},
-                )
-            }
-            items(previewSnapshot.departures.size) { index ->
-                DepartureRow(
-                    selection = previewSnapshot.selection,
-                    departure = previewSnapshot.departures[index],
-                    routeRepo = previewRepository,
-                    currentSystemTime = previewSnapshot.fetchedAt,
-                    showSecondsEnabled = false,
-                    onClick = {},
-                )
-            }
-        }
+            routeRepo = previewRepository,
+            currentSystemTime = previewSnapshot.fetchedAt,
+            showSecondsEnabled = false,
+            autoUpdatesEnabled = true,
+            isRefreshing = false,
+            onOpenSettings = {},
+            onToggleAutoUpdates = {},
+            onOpenRouteSetup = {},
+            onOpenDepartureDetails = {},
+            onRefresh = {},
+        )
     }
 }

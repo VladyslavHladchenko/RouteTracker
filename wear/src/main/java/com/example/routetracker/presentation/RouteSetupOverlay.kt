@@ -8,6 +8,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -68,7 +69,7 @@ private sealed interface RouteSetupPage {
 }
 
 @Composable
-internal fun RouteSetupOverlay(
+internal fun RouteSetupScreen(
     routeRepo: RouteRepository,
     currentSelection: RouteSelection,
     favoriteRoutes: List<RouteSelection>,
@@ -156,6 +157,15 @@ internal fun RouteSetupOverlay(
         scrollState.scrollTo(0)
     }
 
+    BackHandler(enabled = page != RouteSetupPage.Home) {
+        page = when (val currentPage = page) {
+            RouteSetupPage.Home -> RouteSetupPage.Home
+            is RouteSetupPage.PlatformPicker -> RouteSetupPage.StationSearch(currentPage.target)
+            is RouteSetupPage.StationSearch -> RouteSetupPage.Home
+            RouteSetupPage.LineSearch -> RouteSetupPage.Home
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -203,11 +213,9 @@ internal fun RouteSetupOverlay(
                         },
                         onApplyFavorite = { selection ->
                             onApplySelection(selection)
-                            onDismiss()
                         },
                         onApplyRoute = {
                             onApplySelection(draftSelection)
-                            onDismiss()
                         },
                         onRetryCatalog = {
                             coroutineScope.launch {

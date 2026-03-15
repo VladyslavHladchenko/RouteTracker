@@ -23,7 +23,21 @@ The current live-search logic still supports only `direct` rides. No transfers a
 
 ### Activity
 
-The activity opens on the live departures board.
+The activity uses Wear navigation with swipe-dismissable screens.
+
+Screen flow:
+
+- `Board`: the live departures board
+- `Settings`: opened from the gear button above the board
+- `Route setup`: opened by tapping the selected-route header
+- `Trip details`: opened by tapping one departure row
+
+Swipe-dismiss behavior:
+
+- swiping back from `Settings`, `Route setup`, or `Trip details` returns to the board
+- the route-setup sub-steps still use in-screen Back buttons
+
+The board opens first.
 
 Visible immediately:
 
@@ -39,7 +53,7 @@ Above the main board, available by swiping down:
 
 ### Route Setup
 
-The route setup overlay is the main configuration flow for the watch.
+The route setup screen is the main configuration flow for the watch.
 
 Home step:
 

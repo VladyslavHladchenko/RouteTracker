@@ -55,6 +55,9 @@ data class RouteSelection(
     val routeSummaryLabel: String
         get() = "${origin.stationName} to ${destination.stationName}"
 
+    val headerRouteSummaryLabel: String
+        get() = "${origin.headerLabel} to ${destination.headerLabel}"
+
     val routeSummaryWithPlatforms: String
         get() = "${origin.displayLabel} -> ${destination.displayLabel}"
 
@@ -67,6 +70,16 @@ data class RouteSelection(
 
     fun usesFixedLine(): Boolean = line != null
 }
+
+private val StopSelection.headerLabel: String
+    get() = buildString {
+        append(stationName)
+        compactPlatformLabel?.let { label ->
+            append(" (")
+            append(label)
+            append(')')
+        }
+    }
 
 private fun compactPlatformLabel(label: String): String {
     val compact = label.removePrefix("Platform ").trim()

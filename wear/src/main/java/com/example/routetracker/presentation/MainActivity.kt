@@ -1094,7 +1094,7 @@ private fun HeaderCard(
             textAlign = TextAlign.Center,
         )
         Text(
-            text = selection.routeSummaryLabel,
+            text = selection.headerRouteSummaryLabel,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,

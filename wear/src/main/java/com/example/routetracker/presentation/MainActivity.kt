@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -73,6 +74,7 @@ private const val INITIAL_ACTIVITY_CENTER_INDEX = MAIN_SCREEN_INDEX + 1
 private const val HALF_MINUTE_MILLIS = 30_000L
 private const val BOARD_ROUTE = "board"
 private const val SETTINGS_ROUTE = "settings"
+private const val QUICK_SWITCH_ROUTE = "quick_switch"
 private const val ROUTE_SETUP_ROUTE = "route_setup"
 private const val TRIP_DETAILS_ROUTE = "trip_details"
 private val BOARDING_PLATFORM_COLOR = Color(0xFF70D38A)
@@ -103,6 +105,8 @@ fun WearApp(routeRepo: RouteRepository) {
     var liveSnapshotCacheLabel by remember { mutableStateOf(routeRepo.getLiveSnapshotCacheLabel()) }
     var gtfsTripDetailCacheLabel by remember { mutableStateOf(routeRepo.getGtfsTripDetailCacheLabel()) }
     var vehiclePositionCacheLabel by remember { mutableStateOf(routeRepo.getVehiclePositionCacheLabel()) }
+    var routeSetupSeedSelection by remember { mutableStateOf<RouteSelection?>(null) }
+    var routeSetupEditingFavoriteStableKey by remember { mutableStateOf<String?>(null) }
     var selectedDeparture by remember { mutableStateOf<RouteDeparture?>(null) }
     var snapshot by remember { mutableStateOf<DepartureSnapshot?>(null) }
     var isRefreshing by remember { mutableStateOf(true) }
@@ -120,6 +124,8 @@ fun WearApp(routeRepo: RouteRepository) {
     val latestLiveSnapshotCacheLabel = rememberUpdatedState(liveSnapshotCacheLabel)
     val latestGtfsTripDetailCacheLabel = rememberUpdatedState(gtfsTripDetailCacheLabel)
     val latestVehiclePositionCacheLabel = rememberUpdatedState(vehiclePositionCacheLabel)
+    val latestRouteSetupSeedSelection = rememberUpdatedState(routeSetupSeedSelection)
+    val latestRouteSetupEditingFavoriteStableKey = rememberUpdatedState(routeSetupEditingFavoriteStableKey)
     val latestSelectedDeparture = rememberUpdatedState(selectedDeparture)
     val latestSnapshot = rememberUpdatedState(snapshot)
     val latestIsRefreshing = rememberUpdatedState(isRefreshing)
@@ -173,6 +179,29 @@ fun WearApp(routeRepo: RouteRepository) {
         }
     }
 
+    fun returnToBoard() {
+        navController.navigate(BOARD_ROUTE) {
+            launchSingleTop = true
+            popUpTo(BOARD_ROUTE) {
+                inclusive = false
+            }
+        }
+    }
+
+    fun openRouteSetup(
+        seedSelection: RouteSelection? = null,
+        editingFavoriteStableKey: String? = null,
+    ) {
+        routeSetupSeedSelection = seedSelection
+        routeSetupEditingFavoriteStableKey = editingFavoriteStableKey
+        navController.navigate(ROUTE_SETUP_ROUTE)
+    }
+
+    fun clearRouteSetupContext() {
+        routeSetupSeedSelection = null
+        routeSetupEditingFavoriteStableKey = null
+    }
+
     suspend fun loadSnapshot(forceRefresh: Boolean, requestSurfaceRefresh: Boolean) {
         isRefreshing = true
         try {
@@ -206,6 +235,24 @@ fun WearApp(routeRepo: RouteRepository) {
             forceRefresh = true,
             requestSurfaceRefresh = true,
         )
+    }
+
+    fun applyRouteSelectionFromUi(selection: RouteSelection) {
+        coroutineScope.launch {
+            showPendingRouteSelection(selection)
+            returnToBoard()
+            try {
+                applyRouteSelection(selection)
+            } catch (error: Exception) {
+                Log.e(
+                    TAG,
+                    "Failed to apply route selection ${selection.routeSummaryWithPlatforms}.",
+                    error,
+                )
+                refreshRouteState()
+                isRefreshing = false
+            }
+        }
     }
 
     suspend fun toggleAutoUpdates() {
@@ -433,9 +480,13 @@ fun WearApp(routeRepo: RouteRepository) {
                                 toggleAutoUpdates()
                             }
                         },
-                        onOpenRouteSetup = {
+                        onOpenQuickRouteSwitch = {
                             Log.d(TAG, "Header route launcher tapped.")
-                            navController.navigate(ROUTE_SETUP_ROUTE)
+                            navController.navigate(QUICK_SWITCH_ROUTE)
+                        },
+                        onOpenRouteSetup = {
+                            Log.d(TAG, "Header route launcher long-pressed.")
+                            openRouteSetup()
                         },
                         onOpenDepartureDetails = { departure ->
                             selectedDeparture = departure
@@ -513,34 +564,57 @@ fun WearApp(routeRepo: RouteRepository) {
                     )
                 }
 
+                composable(QUICK_SWITCH_ROUTE) {
+                    val selectionForQuickSwitch = latestSelection.value
+                    val favoritesForQuickSwitch = latestFavoriteRoutes.value
+                    QuickRouteSwitchScreen(
+                        currentSelection = selectionForQuickSwitch,
+                        favoriteRoutes = favoritesForQuickSwitch,
+                        onApplyFavorite = { selection ->
+                            applyRouteSelectionFromUi(selection)
+                        },
+                        onEditFavorite = { selection ->
+                            openRouteSetup(
+                                seedSelection = selection,
+                                editingFavoriteStableKey = selection.stableKey,
+                            )
+                        },
+                        onDeleteFavorite = { selection ->
+                            coroutineScope.launch {
+                                withContext(Dispatchers.IO) {
+                                    routeRepo.removeFavoriteRoute(selection.stableKey)
+                                }
+                                refreshRouteState()
+                            }
+                        },
+                        onOpenRouteSetup = {
+                            clearRouteSetupContext()
+                            navController.navigate(ROUTE_SETUP_ROUTE) {
+                                popUpTo(QUICK_SWITCH_ROUTE) {
+                                    inclusive = true
+                                }
+                            }
+                        },
+                    )
+                }
+
                 composable(ROUTE_SETUP_ROUTE) {
                     DisposableEffect(Unit) {
                         onDispose {
                             refreshRouteState()
+                            clearRouteSetupContext()
                         }
                     }
-                    val selectionForRouteSetup = latestSelection.value
+                    val selectionForRouteSetup = latestRouteSetupSeedSelection.value ?: latestSelection.value
                     val favoritesForRouteSetup = latestFavoriteRoutes.value
+                    val editingFavoriteStableKeyForRouteSetup = latestRouteSetupEditingFavoriteStableKey.value
                     RouteSetupScreen(
                         routeRepo = routeRepo,
                         currentSelection = selectionForRouteSetup,
                         favoriteRoutes = favoritesForRouteSetup,
+                        editingFavoriteStableKey = editingFavoriteStableKeyForRouteSetup,
                         onApplySelection = { selection ->
-                            coroutineScope.launch {
-                                showPendingRouteSelection(selection)
-                                navController.popBackStack()
-                                try {
-                                    applyRouteSelection(selection)
-                                } catch (error: Exception) {
-                                    Log.e(
-                                        TAG,
-                                        "Failed to apply route selection ${selection.routeSummaryWithPlatforms}.",
-                                        error,
-                                    )
-                                    refreshRouteState()
-                                    isRefreshing = false
-                                }
-                            }
+                            applyRouteSelectionFromUi(selection)
                         },
                         onDismiss = {
                             refreshRouteState()
@@ -604,6 +678,7 @@ private fun BoardScreen(
     isRefreshing: Boolean,
     onOpenSettings: () -> Unit,
     onToggleAutoUpdates: () -> Unit,
+    onOpenQuickRouteSwitch: () -> Unit,
     onOpenRouteSetup: () -> Unit,
     onOpenDepartureDetails: (RouteDeparture) -> Unit,
     onRefresh: () -> Unit,
@@ -651,6 +726,7 @@ private fun BoardScreen(
                 HeaderCard(
                     selection = selection,
                     statusText = statusText,
+                    onOpenQuickRouteSwitch = onOpenQuickRouteSwitch,
                     onOpenRouteSetup = onOpenRouteSetup,
                 )
             }
@@ -992,6 +1068,7 @@ private fun formatActivityClock(
 private fun HeaderCard(
     selection: RouteSelection,
     statusText: String,
+    onOpenQuickRouteSwitch: () -> Unit,
     onOpenRouteSetup: () -> Unit,
 ) {
     Column(
@@ -1002,7 +1079,10 @@ private fun HeaderCard(
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 shape = RoundedCornerShape(24.dp),
             )
-            .clickable(onClick = onOpenRouteSetup)
+            .combinedClickable(
+                onClick = onOpenQuickRouteSwitch,
+                onLongClick = onOpenRouteSetup,
+            )
             .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -1027,7 +1107,7 @@ private fun HeaderCard(
             textAlign = TextAlign.Center,
         )
         Text(
-            text = "Tap to change route",
+            text = "Tap favorites  |  Hold full setup",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -1397,6 +1477,7 @@ fun DefaultPreview() {
             isRefreshing = false,
             onOpenSettings = {},
             onToggleAutoUpdates = {},
+            onOpenQuickRouteSwitch = {},
             onOpenRouteSetup = {},
             onOpenDepartureDetails = {},
             onRefresh = {},

@@ -11,6 +11,7 @@ import android.widget.EditText
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,12 +75,16 @@ internal fun RouteSetupScreen(
     routeRepo: RouteRepository,
     currentSelection: RouteSelection,
     favoriteRoutes: List<RouteSelection>,
+    editingFavoriteStableKey: String? = null,
     onApplySelection: (RouteSelection) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var page by remember(currentSelection.stableKey) { mutableStateOf<RouteSetupPage>(RouteSetupPage.Home) }
     var draftSelection by remember(currentSelection.stableKey) { mutableStateOf(currentSelection) }
     var localFavorites by remember(favoriteRoutes) { mutableStateOf(favoriteRoutes) }
+    var editingFavoriteKey by remember(currentSelection.stableKey, editingFavoriteStableKey) {
+        mutableStateOf(editingFavoriteStableKey)
+    }
     // Use the in-memory catalog immediately when available; disk/network loading happens off the UI thread below.
     var catalog by remember { mutableStateOf(routeRepo.peekTransitCatalogInMemory()) }
     var isCatalogLoading by remember { mutableStateOf(catalog == null) }
@@ -204,6 +209,7 @@ internal fun RouteSetupScreen(
                     RouteSetupHomePage(
                         draftSelection = draftSelection,
                         favoriteRoutes = localFavorites,
+                        isEditingFavorite = editingFavoriteKey != null,
                         isCatalogLoading = isCatalogLoading,
                         catalogError = catalogError,
                         onChooseOrigin = {
@@ -221,7 +227,15 @@ internal fun RouteSetupScreen(
                         onToggleFavorite = {
                             coroutineScope.launch {
                                 withContext(Dispatchers.IO) {
-                                    routeRepo.toggleFavoriteRoute(draftSelection)
+                                    if (editingFavoriteKey != null) {
+                                        val savedSelection = routeRepo.updateFavoriteRoute(
+                                            originalStableKey = editingFavoriteKey!!,
+                                            selection = draftSelection,
+                                        )
+                                        editingFavoriteKey = savedSelection.stableKey
+                                    } else {
+                                        routeRepo.toggleFavoriteRoute(draftSelection)
+                                    }
                                 }
                                 localFavorites = routeRepo.getFavoriteRoutes()
                             }
@@ -332,9 +346,133 @@ private fun RouteSelection.withEndpoint(
 }
 
 @Composable
+internal fun QuickRouteSwitchScreen(
+    currentSelection: RouteSelection,
+    favoriteRoutes: List<RouteSelection>,
+    onApplyFavorite: (RouteSelection) -> Unit,
+    onEditFavorite: (RouteSelection) -> Unit,
+    onDeleteFavorite: (RouteSelection) -> Unit,
+    onOpenRouteSetup: () -> Unit,
+) {
+    var selectedFavoriteForMenu by remember(favoriteRoutes) { mutableStateOf<RouteSelection?>(null) }
+
+    BackHandler(enabled = selectedFavoriteForMenu != null) {
+        selectedFavoriteForMenu = null
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = RoundedCornerShape(28.dp),
+                )
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "Route switch",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = currentSelection.routeSummaryLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                textAlign = TextAlign.Center,
+            )
+
+            val favoriteForMenu = selectedFavoriteForMenu
+            if (favoriteForMenu != null) {
+                RouteSetupInfoCard(
+                    title = "Favorite options",
+                    value = favoriteForMenu.routeSummaryWithPlatforms,
+                    topPadding = 10.dp,
+                )
+                ActionButton(
+                    label = "Edit favorite",
+                    topPadding = 10.dp,
+                    emphasize = true,
+                    onClick = {
+                        selectedFavoriteForMenu = null
+                        onEditFavorite(favoriteForMenu)
+                    },
+                )
+                ActionButton(
+                    label = "Delete favorite",
+                    topPadding = 8.dp,
+                    onClick = {
+                        selectedFavoriteForMenu = null
+                        onDeleteFavorite(favoriteForMenu)
+                    },
+                )
+                ActionButton(
+                    label = "Cancel",
+                    topPadding = 8.dp,
+                    onClick = {
+                        selectedFavoriteForMenu = null
+                    },
+                )
+            } else if (favoriteRoutes.isEmpty()) {
+                RouteSetupInfoCard(
+                    title = "No favorites",
+                    value = "Save routes in the full setup, then switch them from here.",
+                    topPadding = 10.dp,
+                )
+            } else {
+                Text(
+                    text = "Favorites",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                    textAlign = TextAlign.Center,
+                )
+                favoriteRoutes.forEach { favorite ->
+                    FavoriteRouteCard(
+                        selection = favorite,
+                        subtitle = buildString {
+                            append(favorite.favoriteSummaryLabel)
+                            if (favorite.stableKey == currentSelection.stableKey) {
+                                append("  · Current")
+                            }
+                        },
+                        onClick = { onApplyFavorite(favorite) },
+                        onLongClick = {
+                            selectedFavoriteForMenu = favorite
+                        },
+                    )
+                }
+            }
+
+            ActionButton(
+                label = "New route",
+                topPadding = 12.dp,
+                emphasize = true,
+                onClick = onOpenRouteSetup,
+            )
+        }
+    }
+}
+
+@Composable
 private fun RouteSetupHomePage(
     draftSelection: RouteSelection,
     favoriteRoutes: List<RouteSelection>,
+    isEditingFavorite: Boolean,
     isCatalogLoading: Boolean,
     catalogError: String?,
     onChooseOrigin: () -> Unit,
@@ -403,7 +541,11 @@ private fun RouteSetupHomePage(
     )
 
     ActionButton(
-        label = if (isFavorite) "Remove favorite" else "Save favorite",
+        label = when {
+            isEditingFavorite -> "Update favorite"
+            isFavorite -> "Remove favorite"
+            else -> "Save favorite"
+        },
         topPadding = 12.dp,
         onClick = onToggleFavorite,
     )
@@ -738,13 +880,16 @@ private fun RouteSetupValueCard(
 @Composable
 private fun FavoriteRouteCard(
     selection: RouteSelection,
+    subtitle: String = selection.favoriteSummaryLabel,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     SuggestionCard(
         title = selection.routeSummaryLabel,
-        subtitle = selection.line?.displayLabel ?: "Any line",
+        subtitle = subtitle,
         topPadding = 8.dp,
         onClick = onClick,
+        onLongClick = onLongClick,
     )
 }
 
@@ -784,6 +929,7 @@ private fun SuggestionCard(
     subtitle: String,
     topPadding: androidx.compose.ui.unit.Dp = 8.dp,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -793,7 +939,16 @@ private fun SuggestionCard(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shape = RoundedCornerShape(18.dp),
             )
-            .clickable(onClick = onClick)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            )
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Text(

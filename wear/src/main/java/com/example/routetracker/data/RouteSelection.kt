@@ -16,6 +16,11 @@ data class StopSelection(
                 append(')')
             }
         }
+
+    val compactPlatformLabel: String?
+        get() = platformLabel
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::compactPlatformLabel)
 }
 
 data class LineSelection(
@@ -53,5 +58,17 @@ data class RouteSelection(
     val routeSummaryWithPlatforms: String
         get() = "${origin.displayLabel} -> ${destination.displayLabel}"
 
+    val favoriteSummaryLabel: String
+        get() = buildList {
+            origin.compactPlatformLabel?.let { add("From $it") }
+            destination.compactPlatformLabel?.let { add("To $it") }
+            add(line?.displayLabel ?: "Any line")
+        }.joinToString("  |  ")
+
     fun usesFixedLine(): Boolean = line != null
+}
+
+private fun compactPlatformLabel(label: String): String {
+    val compact = label.removePrefix("Platform ").trim()
+    return compact.ifBlank { label }
 }

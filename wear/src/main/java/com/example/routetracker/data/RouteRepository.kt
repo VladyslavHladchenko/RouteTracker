@@ -284,6 +284,42 @@ class RouteRepository(private val context: Context) {
         return nowFavorite
     }
 
+    fun removeFavoriteRoute(stableKey: String): Boolean {
+        val favorites = getFavoriteRoutes().toMutableList()
+        val existingIndex = favorites.indexOfFirst { it.stableKey == stableKey }
+        if (existingIndex < 0) {
+            return false
+        }
+
+        val removedSelection = favorites.removeAt(existingIndex)
+        prefs.edit {
+            putString(PREF_FAVORITE_ROUTE_SELECTIONS, routeSelectionListToJsonString(favorites))
+        }
+        Log.d(TAG, "Favorite route removed. route=${removedSelection.routeSummaryWithPlatforms}")
+        return true
+    }
+
+    fun updateFavoriteRoute(originalStableKey: String, selection: RouteSelection): RouteSelection {
+        val reboundSelection = rebindSelectionToCachedCatalog(selection)
+        val favorites = getFavoriteRoutes().toMutableList()
+        favorites.removeAll { favorite ->
+            favorite.stableKey == originalStableKey || favorite.stableKey == reboundSelection.stableKey
+        }
+        favorites.add(0, reboundSelection)
+        while (favorites.size > MAX_FAVORITES) {
+            favorites.removeLast()
+        }
+
+        prefs.edit {
+            putString(PREF_FAVORITE_ROUTE_SELECTIONS, routeSelectionListToJsonString(favorites))
+        }
+        Log.d(
+            TAG,
+            "Favorite route updated. original=$originalStableKey route=${reboundSelection.routeSummaryWithPlatforms}",
+        )
+        return reboundSelection
+    }
+
     fun loadTransitCatalog(forceRefresh: Boolean = false): TransitCatalog {
         return catalogRepository.getCatalog(forceRefresh = forceRefresh)
     }

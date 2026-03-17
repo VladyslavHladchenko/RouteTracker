@@ -29,7 +29,8 @@ Screen flow:
 
 - `Board`: the live departures board
 - `Settings`: opened from the gear button above the board
-- `Route setup`: opened by tapping the selected-route header
+- `Quick switch`: opened by tapping the selected-route header
+- `Route setup`: opened by long-pressing the selected-route header or from `Quick switch`
 - `Trip details`: opened by tapping one departure row
 
 Swipe-dismiss behavior:
@@ -42,7 +43,7 @@ The board opens first.
 Visible immediately:
 
 - current system clock on the curved left edge
-- selected route header, which also opens route setup
+- selected route header, which opens quick-switch on tap and full route setup on long-press
 - next direct departures
 - refresh button
 
@@ -87,12 +88,13 @@ Nearby same-name station groups are merged into one search result before display
 
 ### Favorites
 
-Favorites are stored locally and shown on the route-setup home screen.
+Favorites are stored locally and shown in both quick-switch and route setup.
 
 Current behavior:
 
 - `Save favorite` adds the current route setup
-- tapping a favorite applies it immediately
+- tapping a favorite in quick-switch applies it immediately
+- long-pressing a favorite in quick-switch opens `Edit favorite` / `Delete favorite`
 - favorites are de-duplicated by origin, destination, platform filters, and line
 - favorites are capped at `8`
 
@@ -463,6 +465,45 @@ Unit tests:
 ```powershell
 ./gradlew :wear:testDebugUnitTest
 ```
+
+Compose UI test APK:
+
+```powershell
+./gradlew :wear:assembleDebugAndroidTest
+```
+
+Screenshot baselines:
+
+- screenshot tests live in `wear/src/test/java/com/example/routetracker/presentation/WearScreenshotTest.kt`
+- recorded baselines live in `wear/src/test/screenshots/`
+- current baseline set covers:
+  - board with departures
+  - board loading state
+  - quick switch
+  - route setup home
+  - trip details
+
+Record screenshots:
+
+```powershell
+./gradlew :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.record=true
+```
+
+Verify screenshots:
+
+```powershell
+./gradlew :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.verify=true
+```
+
+Behavior tests:
+
+- Compose UI flow tests live in `wear/src/androidTest/java/com/example/routetracker/presentation/WearUiFlowTest.kt`
+- current flow coverage includes:
+  - header tap / long-press behavior
+  - board row platform and delay rendering
+  - quick-switch favorite ordering
+  - favorite long-press menu
+  - trip-details close action
 
 ## Known Environment Quirk
 

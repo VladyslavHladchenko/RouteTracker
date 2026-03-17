@@ -17,7 +17,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -36,6 +36,21 @@ android {
     useLibrary("wear-sdk")
     buildFeatures {
         compose = true
+    }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                it.systemProperty("routeTracker.moduleDir", project.projectDir.absolutePath)
+                val screenshotTaskType = when {
+                    project.findProperty("roborazzi.test.record") == "true" -> "record"
+                    project.findProperty("roborazzi.test.verify") == "true" -> "verify"
+                    project.findProperty("roborazzi.test.compare") == "true" -> "compare"
+                    else -> "compare"
+                }
+                it.systemProperty("routeTracker.screenshotTaskType", screenshotTaskType)
+            }
+        }
     }
 }
 
@@ -60,7 +75,14 @@ dependencies {
     implementation(libs.androidx.tiles.tooling.preview)
     implementation(libs.androidx.watchface.complications.data.source.ktx)
     testImplementation(libs.junit)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
     androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

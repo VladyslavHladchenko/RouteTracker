@@ -1,0 +1,241 @@
+package com.example.routetracker.presentation
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.example.routetracker.data.LineSelection
+import com.example.routetracker.data.RouteRepository
+import com.example.routetracker.data.RouteSelection
+import com.example.routetracker.data.StopSelection
+import com.example.routetracker.presentation.theme.RouteTrackerTheme
+import java.time.ZonedDateTime
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class WearUiFlowTest {
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    private val context
+        get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test
+    fun headerTapOpensQuickSwitch_andLongPressOpensFullSetup() {
+        val snapshot = RouteRepository.previewSnapshot(selection = sampleAnyPlatformSelection())
+        val routeRepo = RouteRepository(context)
+        var quickSwitchOpened = false
+        var fullSetupOpened = false
+
+        setRouteTrackerContent {
+            BoardScreen(
+                selection = snapshot.selection,
+                departures = snapshot.departures,
+                snapshot = snapshot,
+                statusText = "Live | 18:30",
+                routeRepo = routeRepo,
+                currentSystemTime = snapshot.fetchedAt,
+                showSecondsEnabled = false,
+                autoUpdatesEnabled = true,
+                isRefreshing = false,
+                onOpenSettings = {},
+                onToggleAutoUpdates = {},
+                onOpenQuickRouteSwitch = { quickSwitchOpened = true },
+                onOpenRouteSetup = { fullSetupOpened = true },
+                onOpenDepartureDetails = {},
+                onRefresh = {},
+            )
+        }
+
+        composeRule.onNodeWithTag(UiTestTags.HEADER_CARD).performClick()
+        composeRule.runOnIdle {
+            assertTrue("Quick switch should open on tap.", quickSwitchOpened)
+        }
+
+        composeRule.onNodeWithTag(UiTestTags.HEADER_CARD).performTouchInput {
+            longClick()
+        }
+        composeRule.runOnIdle {
+            assertTrue("Full route setup should open on long press.", fullSetupOpened)
+        }
+    }
+
+    @Test
+    fun boardRowShowsCompactPlatformAndDelayBadge() {
+        val selection = sampleAnyPlatformSelection()
+        val snapshot = RouteRepository.previewSnapshot(selection = selection)
+        val departure = snapshot.departures.first().copy(
+            boardedStopId = "origin-stop-2",
+            boardedPlatformLabel = "Platform 2",
+            delayMinutes = 1,
+        )
+        val routeRepo = RouteRepository(context)
+
+        setRouteTrackerContent {
+            BoardScreen(
+                selection = selection,
+                departures = listOf(departure),
+                snapshot = snapshot.copy(departures = listOf(departure)),
+                statusText = "Live | 18:30",
+                routeRepo = routeRepo,
+                currentSystemTime = snapshot.fetchedAt,
+                showSecondsEnabled = false,
+                autoUpdatesEnabled = true,
+                isRefreshing = false,
+                onOpenSettings = {},
+                onToggleAutoUpdates = {},
+                onOpenQuickRouteSwitch = {},
+                onOpenRouteSetup = {},
+                onOpenDepartureDetails = {},
+                onRefresh = {},
+            )
+        }
+
+        composeRule.onNodeWithTag(UiTestTags.departurePlatform(departure.rowKey))
+            .assertIsDisplayed()
+            .assertTextEquals("2")
+        composeRule.onNodeWithTag(UiTestTags.departureDelay(departure.rowKey))
+            .assertIsDisplayed()
+            .assertTextEquals("+1m")
+    }
+
+    @Test
+    fun quickSwitchShowsFavoritesBeforeNewRoute_andAppliesFavorite() {
+        val currentSelection = samplePinnedSelection()
+        val favoriteA = currentSelection
+        val favoriteB = sampleAnyPlatformSelection().copy(line = null)
+        var appliedSelection: RouteSelection? = null
+
+        setRouteTrackerContent {
+            QuickRouteSwitchScreen(
+                currentSelection = currentSelection,
+                favoriteRoutes = listOf(favoriteA, favoriteB),
+                onApplyFavorite = { appliedSelection = it },
+                onEditFavorite = {},
+                onDeleteFavorite = {},
+                onOpenRouteSetup = {},
+            )
+        }
+
+        val firstFavorite = composeRule.onNodeWithTag(UiTestTags.favoriteRouteCard(favoriteA.stableKey))
+        val newRoute = composeRule.onNodeWithTag(UiTestTags.QUICK_SWITCH_NEW_ROUTE_BUTTON)
+
+        firstFavorite.assertIsDisplayed()
+        newRoute.assertIsDisplayed()
+
+        val favoriteTop = firstFavorite.fetchSemanticsNode().boundsInRoot.top
+        val newRouteTop = newRoute.fetchSemanticsNode().boundsInRoot.top
+        assertTrue("Favorites should appear above the New route action.", favoriteTop < newRouteTop)
+
+        firstFavorite.performClick()
+        composeRule.runOnIdle {
+            assertEquals(favoriteA.stableKey, appliedSelection?.stableKey)
+        }
+    }
+
+    @Test
+    fun favoriteLongPressOpensEditAndDeleteMenu() {
+        val favorite = sampleAnyPlatformSelection()
+
+        setRouteTrackerContent {
+            QuickRouteSwitchScreen(
+                currentSelection = favorite,
+                favoriteRoutes = listOf(favorite),
+                onApplyFavorite = {},
+                onEditFavorite = {},
+                onDeleteFavorite = {},
+                onOpenRouteSetup = {},
+            )
+        }
+
+        composeRule.onNodeWithTag(UiTestTags.favoriteRouteCard(favorite.stableKey))
+            .performTouchInput { longClick() }
+
+        composeRule.onNodeWithText("Edit favorite").assertIsDisplayed()
+        composeRule.onNodeWithText("Delete favorite").assertIsDisplayed()
+    }
+
+    @Test
+    fun tripDetailsShowsBoardingPlatformAndCloseDismisses() {
+        val selection = sampleAnyPlatformSelection()
+        val snapshot = RouteRepository.previewSnapshot(selection = selection)
+        val departure = snapshot.departures.first().copy(
+            boardedStopId = "origin-stop-2",
+            boardedPlatformLabel = "Platform 2",
+        )
+        val routeRepo = RouteRepository(context)
+        var dismissed = false
+
+        setRouteTrackerContent {
+            DepartureDetailsScreen(
+                selection = selection,
+                departure = departure,
+                routeRepo = routeRepo,
+                currentSystemTime = ZonedDateTime.now(),
+                showSecondsEnabled = false,
+                onDismiss = { dismissed = true },
+            )
+        }
+
+        composeRule.onNodeWithText("Boarding platform").assertIsDisplayed()
+        composeRule.onNodeWithText("2").assertIsDisplayed()
+        composeRule.onNodeWithTag(UiTestTags.TRIP_DETAILS_CLOSE_BUTTON).performClick()
+        composeRule.runOnIdle {
+            assertTrue("Close should dismiss trip details.", dismissed)
+        }
+    }
+
+    private fun sampleAnyPlatformSelection(): RouteSelection {
+        return RouteSelection(
+            origin = StopSelection(
+                stationKey = "station:palmovka",
+                stationName = "Palmovka",
+                stopIds = listOf("stop-a", "stop-b"),
+            ),
+            destination = StopSelection(
+                stationKey = "station:vrsovice",
+                stationName = "Nádraží Vršovice",
+                stopIds = listOf("stop-c"),
+            ),
+            line = LineSelection(shortName = "7"),
+        )
+    }
+
+    private fun samplePinnedSelection(): RouteSelection {
+        return sampleAnyPlatformSelection().copy(
+            origin = StopSelection(
+                stationKey = "station:palmovka",
+                stationName = "Palmovka",
+                platformKey = "platform-2",
+                platformLabel = "Platform 2",
+                stopIds = listOf("stop-b"),
+            ),
+            destination = StopSelection(
+                stationKey = "station:vrsovice",
+                stationName = "Nádraží Vršovice",
+                platformKey = "platform-4",
+                platformLabel = "Platform 4",
+                stopIds = listOf("stop-c"),
+            ),
+        )
+    }
+
+    private fun setRouteTrackerContent(content: @Composable () -> Unit) {
+        composeRule.setContent {
+            RouteTrackerTheme {
+                content()
+            }
+        }
+    }
+}

@@ -20,7 +20,9 @@ local.properties
 .gradle-local/
 .gradle-home/
 .kotlin/
+.android-local/
 build/
+.tmp-roborazzi-*.jar
 
 # Android build outputs
 captures/

@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -666,7 +666,7 @@ private fun millisUntilNextHalfMinute(nowMillis: Long = System.currentTimeMillis
 }
 
 @Composable
-private fun BoardScreen(
+internal fun BoardScreen(
     selection: RouteSelection,
     departures: List<RouteDeparture>,
     snapshot: DepartureSnapshot?,
@@ -757,6 +757,7 @@ private fun BoardScreen(
                 Button(
                     onClick = onRefresh,
                     modifier = Modifier
+                        .testTag(UiTestTags.BOARD_REFRESH_BUTTON)
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(
@@ -835,7 +836,7 @@ private fun ActivityClockChip(
 }
 
 @Composable
-private fun SettingsScreen(
+internal fun SettingsScreen(
     showSecondsEnabled: Boolean,
     detailsDialogAutoRefreshEnabled: Boolean,
     verifiedMatchCount: Int,
@@ -853,24 +854,9 @@ private fun SettingsScreen(
     onCycleVehiclePositionCache: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(28.dp),
-                )
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+    val scrollState = rememberScrollState()
+
+    RoundScrollablePage(scrollState = scrollState) {
             Text(
                 text = "Settings",
                 style = MaterialTheme.typography.titleMedium,
@@ -1042,6 +1028,7 @@ private fun SettingsScreen(
             Button(
                 onClick = onDismiss,
                 modifier = Modifier
+                    .testTag(UiTestTags.SETTINGS_CLOSE_BUTTON)
                     .fillMaxWidth()
                     .padding(top = 12.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
@@ -1051,7 +1038,6 @@ private fun SettingsScreen(
             ) {
                 Text("Close")
             }
-        }
     }
 }
 
@@ -1073,6 +1059,7 @@ private fun HeaderCard(
 ) {
     Column(
         modifier = Modifier
+            .testTag(UiTestTags.HEADER_CARD)
             .fillMaxWidth()
             .padding(horizontal = 10.dp)
             .background(
@@ -1129,6 +1116,7 @@ private fun DepartureRow(
 ) {
     Column(
         modifier = Modifier
+            .testTag(UiTestTags.departureCard(departure.rowKey))
             .fillMaxWidth()
             .padding(horizontal = 10.dp)
             .background(
@@ -1158,6 +1146,7 @@ private fun DepartureRow(
                         text = boardingPlatformLabel,
                         style = MaterialTheme.typography.bodySmall,
                         color = BOARDING_PLATFORM_COLOR,
+                        modifier = Modifier.testTag(UiTestTags.departurePlatform(departure.rowKey)),
                         textAlign = TextAlign.End,
                     )
                 }
@@ -1184,6 +1173,7 @@ private fun DepartureRow(
                     text = delayLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = ACTIVITY_DELAY_COLOR,
+                    modifier = Modifier.testTag(UiTestTags.departureDelay(departure.rowKey)),
                     textAlign = TextAlign.End,
                 )
             }
@@ -1192,7 +1182,7 @@ private fun DepartureRow(
 }
 
 @Composable
-private fun DepartureDetailsScreen(
+internal fun DepartureDetailsScreen(
     selection: RouteSelection,
     departure: RouteDeparture,
     routeRepo: RouteRepository,
@@ -1200,24 +1190,9 @@ private fun DepartureDetailsScreen(
     showSecondsEnabled: Boolean,
     onDismiss: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(28.dp),
-                )
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+    val scrollState = rememberScrollState()
+
+    RoundScrollablePage(scrollState = scrollState) {
             Text(
                 text = departure.clockLabel(
                     showSeconds = showSecondsEnabled,
@@ -1297,6 +1272,7 @@ private fun DepartureDetailsScreen(
             Button(
                 onClick = onDismiss,
                 modifier = Modifier
+                    .testTag(UiTestTags.TRIP_DETAILS_CLOSE_BUTTON)
                     .fillMaxWidth()
                     .padding(top = 12.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
@@ -1306,7 +1282,6 @@ private fun DepartureDetailsScreen(
             ) {
                 Text("Close")
             }
-        }
     }
 }
 

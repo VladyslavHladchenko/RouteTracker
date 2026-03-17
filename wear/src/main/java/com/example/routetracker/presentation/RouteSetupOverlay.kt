@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -186,24 +186,7 @@ internal fun RouteSetupScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(scrollState)
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(28.dp),
-                )
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+    RoundScrollablePage(scrollState = scrollState) {
             when (val currentPage = page) {
                 RouteSetupPage.Home -> {
                     RouteSetupHomePage(
@@ -331,7 +314,6 @@ internal fun RouteSetupScreen(
                     )
                 }
             }
-        }
     }
 }
 
@@ -360,24 +342,9 @@ internal fun QuickRouteSwitchScreen(
         selectedFavoriteForMenu = null
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = RoundedCornerShape(28.dp),
-                )
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+    val scrollState = rememberScrollState()
+
+    RoundScrollablePage(scrollState = scrollState) {
             Text(
                 text = "Route switch",
                 style = MaterialTheme.typography.titleMedium,
@@ -462,14 +429,14 @@ internal fun QuickRouteSwitchScreen(
                 label = "New route",
                 topPadding = 12.dp,
                 emphasize = true,
+                testTag = UiTestTags.QUICK_SWITCH_NEW_ROUTE_BUTTON,
                 onClick = onOpenRouteSetup,
             )
-        }
     }
 }
 
 @Composable
-private fun RouteSetupHomePage(
+internal fun RouteSetupHomePage(
     draftSelection: RouteSelection,
     favoriteRoutes: List<RouteSelection>,
     isEditingFavorite: Boolean,
@@ -888,6 +855,7 @@ private fun FavoriteRouteCard(
         title = selection.routeSummaryLabel,
         subtitle = subtitle,
         topPadding = 8.dp,
+        testTag = UiTestTags.favoriteRouteCard(selection.stableKey),
         onClick = onClick,
         onLongClick = onLongClick,
     )
@@ -928,11 +896,13 @@ private fun SuggestionCard(
     title: String,
     subtitle: String,
     topPadding: androidx.compose.ui.unit.Dp = 8.dp,
+    testTag: String? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             .fillMaxWidth()
             .padding(top = topPadding)
             .background(
@@ -970,11 +940,13 @@ private fun ActionButton(
     label: String,
     topPadding: androidx.compose.ui.unit.Dp,
     emphasize: Boolean = false,
+    testTag: String? = null,
     onClick: () -> Unit,
 ) {
     Button(
         onClick = onClick,
         modifier = Modifier
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             .fillMaxWidth()
             .padding(top = topPadding),
         colors = if (emphasize) {

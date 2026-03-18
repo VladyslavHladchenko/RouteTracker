@@ -24,6 +24,12 @@ local.properties
 build/
 .tmp-*
 
+# Local research/reference artifacts
+golemio-pid-docs.html
+golemio-pid-swagger-init.js
+transit_catalog_dump.json
+transit_catalog_v2_dump.json
+
 # Android build outputs
 captures/
 *.apk

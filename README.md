@@ -512,3 +512,50 @@ On this machine, Kotlin daemon startup fails with `AccessDeniedException` under:
 - `C:\Users\Hladc\AppData\Local\kotlin\daemon`
 
 Gradle falls back to non-daemon Kotlin compilation and the build still succeeds, but compiles are slower and look like they hang for a while.
+
+## Repository Conventions
+
+### Gradle Wrapper
+
+Keep the Gradle wrapper files committed:
+
+- `gradlew`
+- `gradlew.bat`
+- `gradle/wrapper/gradle-wrapper.jar`
+- `gradle/wrapper/gradle-wrapper.properties`
+
+The wrapper pins the exact Gradle version used by Android Studio and CI, and `gradle-wrapper.jar` is the small bootstrap binary that downloads and launches that version when needed.
+
+### Shared Repo Policy Files
+
+The repo includes:
+
+- `.editorconfig`
+- `.gitattributes`
+
+`.editorconfig` keeps basic editor behavior consistent across Android Studio, IntelliJ, VS Code, and other editors:
+
+- UTF-8 encoding
+- LF line endings
+- final newline
+- trimmed trailing whitespace
+- consistent indentation for Kotlin, Java, XML, JSON, Markdown, and YAML files
+
+`.gitattributes` keeps Git behavior consistent across Windows and Linux environments:
+
+- normalizes text files to LF in the repository
+- keeps `*.bat` as CRLF for Windows
+- keeps `gradlew` as LF for Linux/macOS/CI
+- marks binary files like `*.jar`, `*.png`, and `*.webp` as binary
+
+This reduces noisy diffs, avoids line-ending churn, and helps keep shell-based CI builds working reliably.
+
+### Local-Only Files
+
+These stay out of version control:
+
+- `local.properties`
+- `.tmp-*`
+- local research/reference artifacts such as temporary HTML, JS, or JSON dumps
+
+They are useful during local investigation, but should not be part of the public repository.

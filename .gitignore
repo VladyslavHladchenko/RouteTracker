@@ -22,7 +22,7 @@ local.properties
 .kotlin/
 .android-local/
 build/
-.tmp-roborazzi-*.jar
+.tmp-*
 
 # Android build outputs
 captures/

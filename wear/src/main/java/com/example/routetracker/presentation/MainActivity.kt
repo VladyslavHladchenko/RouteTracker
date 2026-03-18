@@ -7,10 +7,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,23 +32,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.wear.compose.foundation.CurvedLayout
-import androidx.wear.compose.foundation.CurvedModifier
-import androidx.wear.compose.foundation.CurvedTextStyle
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
-import androidx.wear.compose.foundation.basicCurvedText
-import androidx.wear.compose.foundation.padding
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScrollIndicator
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
@@ -69,8 +66,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "RouteTrackerUi"
-private const val MAIN_SCREEN_INDEX = 3
-private const val INITIAL_ACTIVITY_CENTER_INDEX = MAIN_SCREEN_INDEX + 1
 private const val HALF_MINUTE_MILLIS = 30_000L
 private const val BOARD_ROUTE = "board"
 private const val SETTINGS_ROUTE = "settings"
@@ -683,9 +678,7 @@ internal fun BoardScreen(
     onOpenDepartureDetails: (RouteDeparture) -> Unit,
     onRefresh: () -> Unit,
 ) {
-    val listState = rememberScalingLazyListState(
-        initialCenterItemIndex = INITIAL_ACTIVITY_CENTER_INDEX,
-    )
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
     val emptyStateMessage = when {
         snapshot == null && isRefreshing -> "Loading live departures..."
         snapshot?.errorMessage != null -> snapshot.errorMessage
@@ -700,28 +693,9 @@ internal fun BoardScreen(
         ScalingLazyColumn(
             modifier = Modifier.fillMaxSize(),
             state = listState,
+            autoCentering = null,
+            contentPadding = PaddingValues(top = 20.dp, bottom = 24.dp),
         ) {
-            item {
-                SettingsLauncherButton(
-                    onOpenSettings = onOpenSettings,
-                )
-            }
-
-            item {
-                AutoUpdatesCard(
-                    autoUpdatesEnabled = autoUpdatesEnabled,
-                    onToggleAutoUpdates = onToggleAutoUpdates,
-                )
-            }
-
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                ) {}
-            }
-
             item {
                 HeaderCard(
                     selection = selection,
@@ -768,7 +742,22 @@ internal fun BoardScreen(
                     Text(if (isRefreshing) "Refreshing..." else "Refresh")
                 }
             }
+            item {
+                AutoUpdatesCard(
+                    autoUpdatesEnabled = autoUpdatesEnabled,
+                    onToggleAutoUpdates = onToggleAutoUpdates,
+                )
+            }
+            item {
+                SettingsLauncherButton(
+                    onOpenSettings = onOpenSettings,
+                )
+            }
         }
+        ScrollIndicator(
+            listState,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
@@ -818,19 +807,16 @@ private fun ActivityClockChip(
         }
     }
 
-    CurvedLayout(
+    Box(
         modifier = modifier,
-        anchor = 180f,
+        contentAlignment = Alignment.TopCenter,
     ) {
-        basicCurvedText(
+        Text(
             text = clockText,
-            modifier = CurvedModifier.padding(8.dp),
-            style = {
-                CurvedTextStyle(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 10.sp,
-                )
-            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 6.dp),
         )
     }
 }
@@ -854,28 +840,37 @@ internal fun SettingsScreen(
     onCycleVehiclePositionCache: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val scrollState = rememberScrollState()
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
 
-    RoundScrollablePage(scrollState = scrollState) {
+    RoundScalingPage(state = listState) {
+        item {
             Text(
                 text = "Settings",
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp),
                 textAlign = TextAlign.Center,
             )
+        }
+        item {
             Text(
                 text = "Display",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 4.dp),
                 textAlign = TextAlign.Center,
             )
+        }
+        item {
             Button(
                 onClick = onToggleShowSeconds,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 10.dp),
                 colors = if (showSecondsEnabled) {
                     ButtonDefaults.filledTonalButtonColors(
@@ -891,10 +886,13 @@ internal fun SettingsScreen(
             ) {
                 Text(if (showSecondsEnabled) "Show seconds: On" else "Show seconds: Off")
             }
+        }
+        item {
             Button(
                 onClick = onToggleDetailsDialogAutoRefresh,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 8.dp),
                 colors = if (detailsDialogAutoRefreshEnabled) {
                     ButtonDefaults.filledTonalButtonColors(
@@ -916,19 +914,25 @@ internal fun SettingsScreen(
                     }
                 )
             }
+        }
+        item {
             Text(
                 text = "Live query",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 12.dp),
                 textAlign = TextAlign.Center,
             )
+        }
+        item {
             Button(
                 onClick = onRefreshTransitCatalog,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 10.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -937,18 +941,24 @@ internal fun SettingsScreen(
             ) {
                 Text("Refresh stop catalog")
             }
+        }
+        item {
             Text(
                 text = "Catalog: $transitCatalogLastRefreshLabel",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 6.dp),
                 textAlign = TextAlign.Center,
             )
+        }
+        item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -980,19 +990,25 @@ internal fun SettingsScreen(
                     Text("+")
                 }
             }
+        }
+        item {
             Text(
                 text = "Cache",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 12.dp),
                 textAlign = TextAlign.Center,
             )
+        }
+        item {
             Button(
                 onClick = onCycleLiveSnapshotCache,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 10.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1001,10 +1017,13 @@ internal fun SettingsScreen(
             ) {
                 Text("Live snapshot: $liveSnapshotCacheLabel")
             }
+        }
+        item {
             Button(
                 onClick = onCycleGtfsTripDetailCache,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 8.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1013,10 +1032,13 @@ internal fun SettingsScreen(
             ) {
                 Text("Trip detail: $gtfsTripDetailCacheLabel")
             }
+        }
+        item {
             Button(
                 onClick = onCycleVehiclePositionCache,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 8.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1025,11 +1047,14 @@ internal fun SettingsScreen(
             ) {
                 Text("Vehicle live: $vehiclePositionCacheLabel")
             }
+        }
+        item {
             Button(
                 onClick = onDismiss,
                 modifier = Modifier
                     .testTag(UiTestTags.SETTINGS_CLOSE_BUTTON)
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 12.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -1038,6 +1063,7 @@ internal fun SettingsScreen(
             ) {
                 Text("Close")
             }
+        }
     }
 }
 
@@ -1190,9 +1216,10 @@ internal fun DepartureDetailsScreen(
     showSecondsEnabled: Boolean,
     onDismiss: () -> Unit,
 ) {
-    val scrollState = rememberScrollState()
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
 
-    RoundScrollablePage(scrollState = scrollState) {
+    RoundScalingPage(state = listState) {
+        item {
             Text(
                 text = departure.clockLabel(
                     showSeconds = showSecondsEnabled,
@@ -1200,9 +1227,13 @@ internal fun DepartureDetailsScreen(
                 ),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp),
                 textAlign = TextAlign.Center,
             )
+        }
+        item {
             Text(
                 text = departure.activityStatusLabel(
                     referenceNow = currentSystemTime,
@@ -1212,68 +1243,98 @@ internal fun DepartureDetailsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 2.dp),
                 textAlign = TextAlign.Center,
             )
+        }
+        item {
             DetailValueRow(
                 label = "Line",
                 value = departure.lineLabel,
             )
+        }
+        item {
             DetailValueRow(
                 label = "Boarding platform",
                 value = departure.boardingPlatformCompactLabel ?: "--",
                 valueColor = BOARDING_PLATFORM_COLOR,
             )
+        }
+        item {
             DetailValueRow(
                 label = "Destination arrival",
                 value = routeRepo.formatDetailTime(departure.destinationArrivalTime),
             )
+        }
+        item {
             DetailSectionTitle(
                 title = "Departure board",
                 topPadding = 12.dp,
             )
+        }
+        item {
             DetailValueRow(
                 label = "Departure scheduled",
                 value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.scheduledTime),
             )
+        }
+        item {
             DetailValueRow(
                 label = "Departure predicted",
                 value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.predictedTime),
             )
+        }
+        item {
             DetailValueRow(
                 label = "Delay",
                 value = routeRepo.formatDelaySeconds(departure.departureBoardDetails.delaySeconds),
             )
+        }
+        item {
             DetailValueRow(
                 label = "Origin arrival scheduled",
                 value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.scheduledTime),
             )
+        }
+        item {
             DetailValueRow(
                 label = "Origin arrival predicted",
                 value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.predictedTime),
             )
+        }
+        item {
             DetailSectionTitle(
                 title = "Vehicle positions",
                 topPadding = 12.dp,
             )
+        }
+        item {
             departure.vehiclePositionDetails?.let { vehicleDetails ->
                 DetailValueRow(
                     label = "Delay",
                     value = routeRepo.formatDelaySeconds(vehicleDetails.delaySeconds),
                 )
-                DetailValueRow(
-                    label = "origin_timestamp",
-                    value = routeRepo.formatDetailTime(vehicleDetails.originTimestamp),
-                )
             } ?: DetailValueRow(
                 label = "Status",
                 value = "Not available",
             )
+        }
+        if (departure.vehiclePositionDetails != null) {
+            item {
+                DetailValueRow(
+                    label = "origin_timestamp",
+                    value = routeRepo.formatDetailTime(departure.vehiclePositionDetails.originTimestamp),
+                )
+            }
+        }
+        item {
             Button(
                 onClick = onDismiss,
                 modifier = Modifier
                     .testTag(UiTestTags.TRIP_DETAILS_CLOSE_BUTTON)
                     .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
                     .padding(top = 12.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -1282,6 +1343,7 @@ internal fun DepartureDetailsScreen(
             ) {
                 Text("Close")
             }
+        }
     }
 }
 
@@ -1296,6 +1358,7 @@ private fun DetailSectionTitle(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 10.dp)
             .padding(top = topPadding),
         textAlign = TextAlign.Center,
     )
@@ -1310,12 +1373,13 @@ private fun DetailValueRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 10.dp)
             .padding(top = 8.dp)
             .background(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(22.dp),
             )
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Text(
             text = label,

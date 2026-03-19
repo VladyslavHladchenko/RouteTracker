@@ -3,6 +3,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val golemioApiKey = providers.gradleProperty("golemioApiKey")
+    .orElse(providers.environmentVariable("GOLEMIO_API_KEY"))
+    .orElse("")
+    .get()
+
 android {
     namespace = "com.example.routetracker"
     compileSdk {
@@ -18,6 +23,11 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "String",
+            "GOLEMIO_API_KEY",
+            "\"${golemioApiKey.escapeBuildConfigString()}\"",
+        )
     }
 
     buildTypes {
@@ -35,6 +45,7 @@ android {
     }
     useLibrary("wear-sdk")
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     testOptions {
@@ -89,3 +100,5 @@ dependencies {
     debugImplementation(libs.androidx.tiles.renderer)
     debugImplementation(libs.androidx.tiles.tooling)
 }
+
+fun String.escapeBuildConfigString(): String = replace("\\", "\\\\").replace("\"", "\\\"")

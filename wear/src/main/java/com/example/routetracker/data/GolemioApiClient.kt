@@ -1,6 +1,7 @@
 package com.example.routetracker.data
 
 import android.util.Log
+import com.example.routetracker.BuildConfig
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -12,8 +13,6 @@ import org.json.JSONObject
 
 private const val API_TAG = "GolemioApi"
 private const val API_BASE_URL = "https://api.golemio.cz"
-private const val API_TOKEN =
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NDk0NywiaWF0IjoxNzczMTcxMDAxLCJleHAiOjExNzczMTcxMDAxLCJpc3MiOiJnb2xlbWlvIiwianRpIjoiMzA3M2I1NGItZTg1OC00MDFmLTllODMtYjA4ZWU0NTZhOTI2In0.x-b_ZZPX-yVnS24ABAMulVxB8cmeNviWd6aW7lTDldI"
 private const val DEFAULT_TIMEOUT_MILLIS = 10_000
 private const val MAX_LOG_BODY_LENGTH = 500
 
@@ -57,6 +56,7 @@ class GolemioApiClient {
         params: List<Pair<String, String>>,
         retryOnRateLimit: Boolean,
     ): RawApiResponse {
+        val apiToken = requireApiToken()
         val query = params.joinToString("&") { (key, value) ->
             "${key.urlEncode()}=${value.urlEncode()}"
         }
@@ -78,7 +78,7 @@ class GolemioApiClient {
                 connectTimeout = DEFAULT_TIMEOUT_MILLIS
                 readTimeout = DEFAULT_TIMEOUT_MILLIS
                 setRequestProperty("accept", "application/json")
-                setRequestProperty("X-Access-Token", API_TOKEN)
+                setRequestProperty("X-Access-Token", apiToken)
             }
 
             try {
@@ -142,6 +142,14 @@ class GolemioApiClient {
         val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
         return stream?.bufferedReader()?.use { it.readText() }.orEmpty()
     }
+}
+
+private fun requireApiToken(): String {
+    val token = BuildConfig.GOLEMIO_API_KEY.trim()
+    check(token.isNotEmpty()) {
+        "Missing Golemio API key. Set golemioApiKey in ~/.gradle/gradle.properties or GOLEMIO_API_KEY in the environment."
+    }
+    return token
 }
 
 internal class ApiException(

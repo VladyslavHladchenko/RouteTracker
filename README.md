@@ -466,6 +466,15 @@ Unit tests:
 ./gradlew :wear:testDebugUnitTest
 ```
 
+Golemio API key:
+
+- local Android Studio / local device builds: set `golemioApiKey=...` in `~/.gradle/gradle.properties`
+- local shell builds: either use the same Gradle property or set `GOLEMIO_API_KEY` in the environment
+- GitHub Actions: store `GOLEMIO_API_KEY` as a workflow secret and expose it to the Gradle step
+- Codex cloud: set `GOLEMIO_API_KEY` in the environment or write `golemioApiKey` into `~/.gradle/gradle.properties` during the setup script
+
+The Wear app now reads the token from `BuildConfig.GOLEMIO_API_KEY`, which is generated from the Gradle property or environment variable at build time. If the key is missing, the app fails fast when it first tries to call the API.
+
 Compose UI test APK:
 
 ```powershell
@@ -557,5 +566,6 @@ These stay out of version control:
 - `local.properties`
 - `.tmp-*`
 - local research/reference artifacts such as temporary HTML, JS, or JSON dumps
+- API tokens and other personal credentials
 
 They are useful during local investigation, but should not be part of the public repository.

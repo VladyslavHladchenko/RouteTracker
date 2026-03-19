@@ -1,0 +1,120 @@
+name: Android CI
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - ".github/workflows/android-ci.yml"
+      - ".github/workflows/wear-screenshot-record.yml"
+      - ".github/workflows/wear-ui-tests.yml"
+      - "mobile/**"
+      - "wear/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "gradlew.bat"
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/android-ci.yml"
+      - ".github/workflows/wear-screenshot-record.yml"
+      - ".github/workflows/wear-ui-tests.yml"
+      - "mobile/**"
+      - "wear/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "gradlew.bat"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build And Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      ANDROID_USER_HOME: ${{ runner.temp }}/android-user-home
+      GOLEMIO_API_KEY: ${{ secrets.GOLEMIO_API_KEY }}
+    steps:
+      - name: Checkout Sources
+        uses: actions/checkout@v5
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x ./gradlew
+
+      - name: Set Up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set Up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Set Up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            build-tools;36.0.0
+            platforms;android-36
+
+      - name: Build, Lint, And Test
+        run: >
+          ./gradlew
+          --no-daemon
+          --stacktrace
+          --continue
+          :mobile:assembleDebug
+          :wear:lintDebug
+          :wear:assembleDebug
+          :wear:assembleDebugAndroidTest
+          :wear:testDebugUnitTest
+          -Proborazzi.test.verify=true
+
+      - name: Upload APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apks
+          compression-level: 0
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            mobile/build/outputs/apk/debug/mobile-debug.apk
+            mobile/build/outputs/apk/debug/output-metadata.json
+            wear/build/outputs/apk/debug/wear-debug.apk
+            wear/build/outputs/apk/debug/output-metadata.json
+            wear/build/outputs/apk/androidTest/debug/wear-debug-androidTest.apk
+            wear/build/outputs/apk/androidTest/debug/output-metadata.json
+
+      - name: Upload Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            wear/build/reports/lint-results-debug.html
+            wear/build/reports/lint-results-debug.txt
+            wear/build/reports/lint-results-debug.xml
+            wear/build/reports/tests/testDebugUnitTest/**
+            wear/build/test-results/testDebugUnitTest/**/*.xml
+            wear/build/test-results/roborazzi/**

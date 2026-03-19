@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      ANDROID_USER_HOME: ${{ runner.temp }}/android-user-home
+      ANDROID_USER_HOME: ${{ github.workspace }}/.android-user-home
       GOLEMIO_API_KEY: ${{ secrets.GOLEMIO_API_KEY }}
     steps:
       - name: Checkout Sources

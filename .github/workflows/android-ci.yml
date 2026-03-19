@@ -70,10 +70,7 @@ jobs:
       - name: Set Up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: |
-            platform-tools
-            build-tools;36.0.0
-            platforms;android-36
+          packages: "platform-tools build-tools;36.0.0 platforms;android-36"
 
       - name: Build, Lint, And Test
         run: >

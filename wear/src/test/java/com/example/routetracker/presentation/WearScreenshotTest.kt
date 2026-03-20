@@ -169,8 +169,6 @@ class WearScreenshotTest {
             QuickRouteSwitchScreen(
                 currentSelection = currentSelection,
                 favoriteRoutes = favoriteRoutes,
-                // Keep the legacy favorite-list framing stable here; swap behavior is covered in WearUiFlowTest.
-                showSwapAction = false,
                 onSwapRoute = {},
                 onApplyFavorite = {},
                 onEditFavorite = {},

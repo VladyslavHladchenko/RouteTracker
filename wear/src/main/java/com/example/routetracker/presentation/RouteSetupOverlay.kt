@@ -9,6 +9,8 @@ import android.view.Gravity
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -31,8 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -43,7 +45,6 @@ import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
-import com.example.routetracker.R
 import com.example.routetracker.data.formatBoardingStopCount
 import com.example.routetracker.data.LineOption
 import com.example.routetracker.data.LineSelection
@@ -1131,15 +1132,16 @@ private fun QuickSwitchSectionHeader(
             onClick = onSwapRoute,
             modifier = Modifier
                 .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-                .size(36.dp),
+                .size(32.dp),
             colors = ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ),
         ) {
             Icon(
-                painter = painterResource(id = R.drawable.ic_swap_horizontal_24),
+                painter = rememberVectorPainter(Icons.Filled.SwapHoriz),
                 contentDescription = "Swap route",
+                modifier = Modifier.size(18.dp),
             )
         }
         Text(

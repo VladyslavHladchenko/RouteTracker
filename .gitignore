@@ -14,6 +14,7 @@
 
 # Local machine configuration
 local.properties
+gradlew-local.ps1
 
 # Gradle / Kotlin build state
 .gradle/

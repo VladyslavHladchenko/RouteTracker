@@ -460,6 +460,17 @@ Build:
 ./gradlew :wear:assembleDebug
 ```
 
+Recommended local shell environment on this machine:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:GRADLE_USER_HOME = "$PWD\.gradle-local"
+$env:ANDROID_USER_HOME = "$PWD\.android-local"
+$env:ANDROID_SDK_HOME = "$PWD\.android-local"
+```
+
+These settings avoid the local permission issues seen under the default user-level Gradle and Android directories.
+
 Unit tests:
 
 ```powershell

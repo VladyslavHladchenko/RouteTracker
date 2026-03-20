@@ -14,6 +14,7 @@
 - `wear/src/androidTest/` - instrumented Wear UI tests
 - `wear/src/test/screenshots/` - committed Roborazzi baselines
 - `mobile/` - companion app module; keep it building unless the task explicitly scopes it out
+- `gradlew` and `gradlew.bat` - the checked-in Gradle Wrapper launchers; prefer these over a random system Gradle when possible
 - `.github/workflows/` - GitHub Actions workflows used as the main validation path
 - `docs/ci.md` - current CI setup and artifact behavior
 
@@ -29,6 +30,12 @@
 ## Build, test, and lint commands
 
 Prefer the smallest command that proves the change, but use CI as the final source of truth for Android validation.
+
+Notes:
+
+- `gradlew` is the Gradle Wrapper shell script. It is committed to the repo so the project can run with the exact Gradle version pinned by the wrapper metadata instead of whatever Gradle happens to be installed globally.
+- On Linux or in Codex cloud containers, run `chmod +x ./gradlew` first if `./gradlew` fails with `Permission denied`.
+- In Codex cloud, if the wrapper download is blocked but an installed `gradle` binary is available at exactly version `9.3.1`, it is acceptable to use `gradle` instead of `./gradlew` for validation.
 
 Primary CI-equivalent command set:
 
@@ -59,6 +66,7 @@ Targeted commands:
 - Use `Wear Screenshot Record` when a UI change intentionally updates screenshot baselines.
 - Use `Wear UI Tests` only when emulator-backed validation is needed.
 - If the Codex cloud environment cannot fully reproduce the Android toolchain or emulator setup, do not invent weaker substitutes. State clearly what was validated locally and what still depends on CI.
+- If heavier Android or Roborazzi tasks start correctly but do not finish within the session budget, report that they were attempted, do not claim success, and rely on CI for the final result.
 - When UI changes affect snapshots, update screenshot baselines and make the visual change easy to inspect in the PR.
 
 ## Secrets and live data

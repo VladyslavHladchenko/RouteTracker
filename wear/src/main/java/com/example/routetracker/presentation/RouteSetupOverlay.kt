@@ -332,6 +332,7 @@ private fun RouteSelection.withEndpoint(
 internal fun QuickRouteSwitchScreen(
     currentSelection: RouteSelection,
     favoriteRoutes: List<RouteSelection>,
+    showSwapAction: Boolean = true,
     onSwapRoute: (RouteSelection) -> Unit,
     onApplyFavorite: (RouteSelection) -> Unit,
     onEditFavorite: (RouteSelection) -> Unit,
@@ -368,13 +369,15 @@ internal fun QuickRouteSwitchScreen(
                 textAlign = TextAlign.Center,
             )
         }
-        item {
-            ActionButton(
-                label = "Swap from / to",
-                topPadding = 10.dp,
-                testTag = UiTestTags.QUICK_SWITCH_SWAP_BUTTON,
-                onClick = { onSwapRoute(currentSelection.swappedEndpoints()) },
-            )
+        if (showSwapAction) {
+            item {
+                ActionButton(
+                    label = "Swap from / to",
+                    topPadding = 10.dp,
+                    testTag = UiTestTags.QUICK_SWITCH_SWAP_BUTTON,
+                    onClick = { onSwapRoute(currentSelection.swappedEndpoints()) },
+                )
+            }
         }
 
         val favoriteForMenu = selectedFavoriteForMenu

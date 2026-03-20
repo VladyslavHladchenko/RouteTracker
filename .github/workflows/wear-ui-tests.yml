@@ -52,7 +52,7 @@ jobs:
       - name: Create Wear AVD
         run: |
           mkdir -p "$ANDROID_EMULATOR_HOME" "$ANDROID_AVD_HOME"
-          echo "no" | avdmanager create avd --force --name wear-ci --package "system-images;android-36;android-wear-signed;x86_64" --device "Wear OS Small Round" --path "$ANDROID_AVD_HOME/wear-ci.avd"
+          echo "no" | avdmanager create avd --force --name wear-ci --package "system-images;android-36;android-wear-signed;x86_64" --device "wearos_small_round" --path "$ANDROID_AVD_HOME/wear-ci.avd"
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx "wear-ci"
 
       - name: Start Wear Emulator

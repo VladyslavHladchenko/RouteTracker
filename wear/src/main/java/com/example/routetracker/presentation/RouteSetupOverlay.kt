@@ -369,9 +369,9 @@ internal fun QuickRouteSwitchScreen(
             )
         }
         item {
-            ActionButton(
-                label = "Swap from / to",
-                topPadding = 10.dp,
+            CompactActionChip(
+                label = "Swap route",
+                topPadding = 8.dp,
                 testTag = UiTestTags.QUICK_SWITCH_SWAP_BUTTON,
                 onClick = { onSwapRoute(currentSelection.swappedEndpoints()) },
             )
@@ -1114,5 +1114,38 @@ private fun ActionButton(
         },
     ) {
         Text(label)
+    }
+}
+
+@Composable
+private fun CompactActionChip(
+    label: String,
+    topPadding: androidx.compose.ui.unit.Dp,
+    testTag: String? = null,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = topPadding),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = RoundedCornerShape(percent = 50),
+                )
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
     }
 }

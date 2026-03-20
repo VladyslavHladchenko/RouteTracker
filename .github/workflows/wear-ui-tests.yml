@@ -38,7 +38,7 @@ jobs:
       - name: Set Up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platform-tools build-tools;36.0.0 platforms;android-36"
+          packages: "platform-tools build-tools;36.0.0 platforms;android-36 emulator system-images;android-36;android-wear-signed;x86_64"
 
       - name: Enable KVM Access
         run: |
@@ -46,15 +46,35 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Create Wear AVD
+        run: echo "no" | avdmanager create avd --force --name wear-ci --package "system-images;android-36;android-wear-signed;x86_64"
+
+      - name: Start Wear Emulator
+        run: |
+          nohup emulator -avd wear-ci -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none > "$GITHUB_WORKSPACE/wear-emulator.log" 2>&1 &
+          adb wait-for-device
+          for i in {1..120}; do
+            boot_completed="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            if [ "$boot_completed" = "1" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ "$boot_completed" != "1" ]; then
+            cat "$GITHUB_WORKSPACE/wear-emulator.log"
+            exit 1
+          fi
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+          adb shell input keyevent 82 || true
+
       - name: Run Wear Instrumented Tests
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: android-wear
-          arch: x86_64
-          disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew --no-daemon --stacktrace :wear:connectedDebugAndroidTest
+        run: ./gradlew --no-daemon --stacktrace :wear:connectedDebugAndroidTest
+
+      - name: Stop Wear Emulator
+        if: always()
+        run: adb -s emulator-5554 emu kill || true
 
       - name: Upload UI Test Reports
         if: always()
@@ -64,5 +84,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: |
-            wear/build/reports/androidTests/connected/**
-            wear/build/outputs/androidTest-results/connected/**
+            wear/build/reports/androidTests/**
+            wear/build/outputs/androidTest-results/**
+            wear/build/test-results/**
+
+      - name: Upload Emulator Log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wear-ui-emulator-log
+          if-no-files-found: warn
+          retention-days: 14
+          path: wear-emulator.log

@@ -3,6 +3,7 @@ package com.example.routetracker.presentation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -104,8 +105,8 @@ class WearUiFlowTest {
             )
         }
 
-        assertTagDisplayedAfterScrolling(UiTestTags.departurePlatform(departure.rowKey))
         composeRule.onNodeWithTag(UiTestTags.departurePlatform(departure.rowKey))
+            .assertExists()
             .assertTextEquals("2")
         composeRule.onNodeWithTag(UiTestTags.departureDelay(departure.rowKey))
             .assertIsDisplayed()
@@ -143,8 +144,8 @@ class WearUiFlowTest {
             )
         }
 
-        assertTagDisplayedAfterScrolling(UiTestTags.departurePlatform(departure.rowKey))
         composeRule.onNodeWithTag(UiTestTags.departurePlatform(departure.rowKey))
+            .assertExists()
             .assertTextEquals("2")
         composeRule.onNodeWithTag(UiTestTags.departureDelay(departure.rowKey))
             .assertIsDisplayed()
@@ -278,24 +279,6 @@ class WearUiFlowTest {
                 content()
             }
         }
-    }
-
-    private fun assertTagDisplayedAfterScrolling(tag: String, maxSwipes: Int = 4) {
-        var lastError: AssertionError? = null
-        repeat(maxSwipes + 1) { attempt ->
-            try {
-                composeRule.onNodeWithTag(tag).assertIsDisplayed()
-                return
-            } catch (error: AssertionError) {
-                lastError = error
-                if (attempt == maxSwipes) {
-                    return@repeat
-                }
-                composeRule.onRoot().performTouchInput { swipeUp() }
-                composeRule.waitForIdle()
-            }
-        }
-        throw lastError ?: AssertionError("Expected tag $tag to be displayed.")
     }
 
     private fun clickTagAfterScrolling(tag: String, maxSwipes: Int = 6) {

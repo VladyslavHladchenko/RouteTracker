@@ -60,6 +60,74 @@ class WearScreenshotTest {
     }
 
     @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_boardWithPlatformAndDelay() {
+        val selection = sampleAnyPlatformSelection()
+        val snapshot = previewSnapshot(selection)
+        val routeRepo = RouteRepository(composeRule.activity)
+        val departure = snapshot.departures.first().copy(
+            boardedStopId = "origin-stop-2",
+            boardedPlatformLabel = "Platform 2",
+            delayMinutes = 1,
+        )
+
+        setRouteTrackerContent {
+            BoardScreen(
+                selection = selection,
+                departures = listOf(departure),
+                snapshot = snapshot.copy(departures = listOf(departure)),
+                statusText = "Live | 18:30",
+                routeRepo = routeRepo,
+                currentSystemTime = snapshot.fetchedAt,
+                showSecondsEnabled = false,
+                autoUpdatesEnabled = true,
+                isRefreshing = false,
+                onOpenSettings = {},
+                onToggleAutoUpdates = {},
+                onOpenQuickRouteSwitch = {},
+                onOpenRouteSetup = {},
+                onOpenDepartureDetails = {},
+                onRefresh = {},
+            )
+        }
+        captureScreen("small-round/board_with_platform_delay.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_boardWithPinnedPlatformAndDelay() {
+        val selection = samplePinnedSelection()
+        val snapshot = previewSnapshot(selection)
+        val routeRepo = RouteRepository(composeRule.activity)
+        val departure = snapshot.departures.first().copy(
+            boardedStopId = "origin-stop-2",
+            boardedPlatformLabel = "Platform 2",
+            delayMinutes = 1,
+        )
+
+        setRouteTrackerContent {
+            BoardScreen(
+                selection = selection,
+                departures = listOf(departure),
+                snapshot = snapshot.copy(departures = listOf(departure)),
+                statusText = "Live | 18:30",
+                routeRepo = routeRepo,
+                currentSystemTime = snapshot.fetchedAt,
+                showSecondsEnabled = false,
+                autoUpdatesEnabled = true,
+                isRefreshing = false,
+                onOpenSettings = {},
+                onToggleAutoUpdates = {},
+                onOpenQuickRouteSwitch = {},
+                onOpenRouteSetup = {},
+                onOpenDepartureDetails = {},
+                onRefresh = {},
+            )
+        }
+        captureScreen("small-round/board_with_pinned_platform_delay.png")
+    }
+
+    @Test
     @Config(qualifiers = LARGE_ROUND_QUALIFIERS)
     fun largeRound_boardLoadingState() {
         val selection = sampleAnyPlatformSelection()

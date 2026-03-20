@@ -6,9 +6,11 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.swipeUp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.routetracker.data.LineSelection
@@ -102,8 +104,47 @@ class WearUiFlowTest {
             )
         }
 
+        assertTagDisplayedAfterScrolling(UiTestTags.departurePlatform(departure.rowKey))
         composeRule.onNodeWithTag(UiTestTags.departurePlatform(departure.rowKey))
+            .assertTextEquals("2")
+        composeRule.onNodeWithTag(UiTestTags.departureDelay(departure.rowKey))
             .assertIsDisplayed()
+            .assertTextEquals("+1m")
+    }
+
+    @Test
+    fun boardRowShowsPlatformWhenOriginPlatformIsPreselected() {
+        val selection = samplePinnedSelection()
+        val snapshot = RouteRepository.previewSnapshot(selection = selection)
+        val departure = snapshot.departures.first().copy(
+            boardedStopId = "origin-stop-2",
+            boardedPlatformLabel = "Platform 2",
+            delayMinutes = 1,
+        )
+        val routeRepo = RouteRepository(context)
+
+        setRouteTrackerContent {
+            BoardScreen(
+                selection = selection,
+                departures = listOf(departure),
+                snapshot = snapshot.copy(departures = listOf(departure)),
+                statusText = "Live | 18:30",
+                routeRepo = routeRepo,
+                currentSystemTime = snapshot.fetchedAt,
+                showSecondsEnabled = false,
+                autoUpdatesEnabled = true,
+                isRefreshing = false,
+                onOpenSettings = {},
+                onToggleAutoUpdates = {},
+                onOpenQuickRouteSwitch = {},
+                onOpenRouteSetup = {},
+                onOpenDepartureDetails = {},
+                onRefresh = {},
+            )
+        }
+
+        assertTagDisplayedAfterScrolling(UiTestTags.departurePlatform(departure.rowKey))
+        composeRule.onNodeWithTag(UiTestTags.departurePlatform(departure.rowKey))
             .assertTextEquals("2")
         composeRule.onNodeWithTag(UiTestTags.departureDelay(departure.rowKey))
             .assertIsDisplayed()
@@ -190,7 +231,7 @@ class WearUiFlowTest {
 
         composeRule.onNodeWithText("Boarding platform").assertIsDisplayed()
         composeRule.onNodeWithText("2").assertIsDisplayed()
-        composeRule.onNodeWithTag(UiTestTags.TRIP_DETAILS_CLOSE_BUTTON).performClick()
+        clickTagAfterScrolling(UiTestTags.TRIP_DETAILS_CLOSE_BUTTON)
         composeRule.runOnIdle {
             assertTrue("Close should dismiss trip details.", dismissed)
         }
@@ -237,5 +278,41 @@ class WearUiFlowTest {
                 content()
             }
         }
+    }
+
+    private fun assertTagDisplayedAfterScrolling(tag: String, maxSwipes: Int = 4) {
+        var lastError: AssertionError? = null
+        repeat(maxSwipes + 1) { attempt ->
+            try {
+                composeRule.onNodeWithTag(tag).assertIsDisplayed()
+                return
+            } catch (error: AssertionError) {
+                lastError = error
+                if (attempt == maxSwipes) {
+                    return@repeat
+                }
+                composeRule.onRoot().performTouchInput { swipeUp() }
+                composeRule.waitForIdle()
+            }
+        }
+        throw lastError ?: AssertionError("Expected tag $tag to be displayed.")
+    }
+
+    private fun clickTagAfterScrolling(tag: String, maxSwipes: Int = 6) {
+        var lastError: AssertionError? = null
+        repeat(maxSwipes + 1) { attempt ->
+            try {
+                composeRule.onNodeWithTag(tag).performClick()
+                return
+            } catch (error: AssertionError) {
+                lastError = error
+                if (attempt == maxSwipes) {
+                    return@repeat
+                }
+                composeRule.onRoot().performTouchInput { swipeUp() }
+                composeRule.waitForIdle()
+            }
+        }
+        throw lastError ?: AssertionError("Expected tag $tag to be clickable.")
     }
 }

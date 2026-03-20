@@ -1166,16 +1166,14 @@ private fun DepartureRow(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f),
             )
-            if (selection.origin.platformKey == null) {
-                departure.boardingPlatformCompactLabel?.let { boardingPlatformLabel ->
-                    Text(
-                        text = boardingPlatformLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = BOARDING_PLATFORM_COLOR,
-                        modifier = Modifier.testTag(UiTestTags.departurePlatform(departure.rowKey)),
-                        textAlign = TextAlign.End,
-                    )
-                }
+            departure.boardingPlatformCompactLabel?.let { boardingPlatformLabel ->
+                Text(
+                    text = boardingPlatformLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BOARDING_PLATFORM_COLOR,
+                    modifier = Modifier.testTag(UiTestTags.departurePlatform(departure.rowKey)),
+                    textAlign = TextAlign.End,
+                )
             }
         }
         Row(

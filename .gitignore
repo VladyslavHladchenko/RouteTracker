@@ -21,6 +21,8 @@ local.properties
 .gradle-home/
 .kotlin/
 .android-local/
+.codex/
+.codex-artifacts/
 build/
 .tmp-*
 

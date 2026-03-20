@@ -43,6 +43,7 @@ import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.example.routetracker.R
 import com.example.routetracker.data.formatBoardingStopCount
 import com.example.routetracker.data.LineOption
 import com.example.routetracker.data.LineSelection
@@ -1137,7 +1138,7 @@ private fun QuickSwitchSectionHeader(
             ),
         ) {
             Icon(
-                painter = painterResource(id = android.R.drawable.ic_popup_sync),
+                painter = painterResource(id = R.drawable.ic_swap_horizontal_24),
                 contentDescription = "Swap route",
             )
         }

@@ -31,6 +31,8 @@ File: `.github/workflows/android-ci.yml`
 
 This is the default workflow for pull requests and pushes to `main`. It is designed to give a strong signal without paying emulator startup cost on every change.
 
+The workflow always reports a `Build And Test` check so it can be used with branch protection. For docs-only, README-only, and other non-Android changes, it exits early with a successful no-op result instead of running the Android toolchain.
+
 It runs:
 
 ```bash
@@ -53,6 +55,22 @@ Use this workflow for:
 - catching lint and unit test regressions
 - verifying Roborazzi screenshots against committed baselines
 - collecting build outputs and reports for issue work
+
+The heavy Android steps run only when at least one Android-relevant path changed:
+
+- `.github/workflows/android-ci.yml`
+- `.github/workflows/wear-screenshot-record.yml`
+- `.github/workflows/wear-ui-tests.yml`
+- `mobile/**`
+- `wear/**`
+- `gradle/**`
+- `build.gradle.kts`
+- `settings.gradle.kts`
+- `gradle.properties`
+- `gradlew`
+- `gradlew.bat`
+
+Changes outside that set, such as `docs/**`, `README.md`, and other repository metadata, still get a green `Build And Test` check without doing a full Android build.
 
 ### Wear Screenshot Record
 

@@ -1,0 +1,97 @@
+# AGENTS.md
+
+## Project snapshot
+
+- RouteTracker is an Android project for Prague PID departures, with most active product work in the `wear` module.
+- `mobile` exists and should keep building, but the main UX, UI tests, and screenshot tests live under `wear`.
+- CI and workflow behavior are documented in `docs/ci.md`.
+- Local API reference files such as `golemio-openapi.json` and `golemio-pid-openapi.json` are checked in for reference only.
+
+## Important directories
+
+- `wear/src/main/` - Wear OS app code, screens, repository logic, and app behavior
+- `wear/src/test/` - JVM tests and Roborazzi screenshot tests
+- `wear/src/androidTest/` - instrumented Wear UI tests
+- `wear/src/test/screenshots/` - committed Roborazzi baselines
+- `mobile/` - companion app module; keep it building unless the task explicitly scopes it out
+- `.github/workflows/` - GitHub Actions workflows used as the main validation path
+- `docs/ci.md` - current CI setup and artifact behavior
+
+## Working agreements
+
+- Keep changes focused. Do not mix unrelated refactors into feature or bug-fix work.
+- Preserve existing UI and architecture patterns unless the task explicitly calls for redesign.
+- Prefer repo-tracked instructions over local-only setup. Do not depend on ignored local files such as `.codex/`, `.android-local/`, `.gradle-local/`, or `gradlew-local.ps1`.
+- Do not commit or push directly to protected `main`. Work on a task branch and deliver changes through a pull request.
+- Never commit machine-specific files, caches, local properties, APK outputs, or generated local artifacts unless the task is specifically about committed screenshot baselines.
+- Never add or expose real API keys, tokens, signing files, or other secrets.
+
+## Build, test, and lint commands
+
+Prefer the smallest command that proves the change, but use CI as the final source of truth for Android validation.
+
+Primary CI-equivalent command set:
+
+```bash
+./gradlew --no-daemon --stacktrace --continue \
+  :mobile:assembleDebug \
+  :wear:lintDebug \
+  :wear:assembleDebug \
+  :wear:assembleDebugAndroidTest \
+  :wear:testDebugUnitTest \
+  -Proborazzi.test.verify=true
+```
+
+Targeted commands:
+
+```bash
+./gradlew --no-daemon --stacktrace :wear:assembleDebug
+./gradlew --no-daemon --stacktrace :wear:assembleDebugAndroidTest
+./gradlew --no-daemon --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.verify=true
+./gradlew --no-daemon --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.record=true
+./gradlew --no-daemon --stacktrace :wear:connectedDebugAndroidTest
+```
+
+## Validation strategy
+
+- For Codex web and GitHub-driven tasks, rely on GitHub Actions as the main validation path.
+- The default workflow is `Build And Test` in `.github/workflows/android-ci.yml`.
+- Use `Wear Screenshot Record` when a UI change intentionally updates screenshot baselines.
+- Use `Wear UI Tests` only when emulator-backed validation is needed.
+- If the Codex cloud environment cannot fully reproduce the Android toolchain or emulator setup, do not invent weaker substitutes. State clearly what was validated locally and what still depends on CI.
+- When UI changes affect snapshots, update screenshot baselines and make the visual change easy to inspect in the PR.
+
+## Secrets and live data
+
+- `GOLEMIO_API_KEY` is compiled into `BuildConfig` when provided. Treat any real key as sensitive.
+- Current tests and screenshot coverage should use preview or fake data and should not require a live API key.
+- Do not introduce workflows or changes that embed a real API key into downloadable CI artifacts unless the user explicitly asks for that tradeoff.
+- If a task truly requires live API access, stop and ask before proceeding.
+
+## Wear-specific expectations
+
+- Default to the `wear` module unless the task clearly concerns `mobile` or shared Gradle/configuration files.
+- Respect round-screen constraints. Watch for clipped labels, off-screen actions, and overly tall cards.
+- For changes to departures, trip details, route setup, or other visible Wear UI, update tests and screenshots together when behavior or visuals change.
+
+## PR expectations
+
+- Branches should be short-lived and scoped to one task or issue.
+- Keep PRs scoped to one concern.
+- Summaries should state the user-visible change, validation performed, and any remaining limitation.
+- If CI fails, investigate the reported failure rather than bypassing or weakening checks.
+- If work started from an issue or PR comment, keep follow-up work tied to that context and address review comments directly.
+
+## Review guidelines
+
+- Prioritize behavioral regressions, missing or stale tests, round-screen visibility issues, data/caching mistakes, and secret leakage.
+- Call out missing screenshot updates when UI changed.
+- Treat docs-only wording issues as low priority unless the task explicitly asks for documentation review.
+
+## Done means
+
+- The requested behavior is implemented.
+- Relevant tests or screenshot baselines are updated when needed.
+- Appropriate GitHub Actions checks pass, or any remaining required CI is clearly identified.
+- No local-only files or secrets are committed.
+- Any limitation, follow-up, or unrun validation is stated explicitly.

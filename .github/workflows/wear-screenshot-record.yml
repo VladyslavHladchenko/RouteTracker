@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 35
     env:
       ANDROID_USER_HOME: ${{ github.workspace }}/.android-user-home
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       GOLEMIO_API_KEY: ${{ secrets.GOLEMIO_API_KEY }}
     steps:
       - name: Checkout Sources
@@ -51,7 +52,7 @@ jobs:
 
       - name: Upload Screenshot Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wear-screenshots
           compression-level: 0

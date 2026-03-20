@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 45
     env:
       ANDROID_USER_HOME: ${{ github.workspace }}/.android-user-home
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       GOLEMIO_API_KEY: ${{ secrets.GOLEMIO_API_KEY }}
     steps:
       - name: Checkout Sources
@@ -57,7 +58,7 @@ jobs:
 
       - name: Upload UI Test Reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wear-ui-test-reports
           if-no-files-found: warn

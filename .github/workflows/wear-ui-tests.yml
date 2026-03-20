@@ -51,15 +51,9 @@ jobs:
 
       - name: Start Wear Emulator
         run: |
-          mkdir -p "$ANDROID_USER_HOME"
-          if [ ! -f "$ANDROID_USER_HOME/adbkey" ]; then
-            adb keygen "$ANDROID_USER_HOME/adbkey"
-          fi
-          export ADB_VENDOR_KEYS="$ANDROID_USER_HOME"
           export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
           export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
-          adb kill-server || true
-          nohup "$ANDROID_HOME/emulator/emulator" -avd wear-ci -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none > "$GITHUB_WORKSPACE/wear-emulator.log" 2>&1 &
+          nohup "$ANDROID_HOME/emulator/emulator" -avd wear-ci -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -skip-adb-auth -no-metrics > "$GITHUB_WORKSPACE/wear-emulator.log" 2>&1 &
           if ! timeout 300 adb wait-for-device; then
             cat "$GITHUB_WORKSPACE/wear-emulator.log"
             exit 1

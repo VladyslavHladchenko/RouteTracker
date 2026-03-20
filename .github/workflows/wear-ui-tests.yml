@@ -17,9 +17,6 @@ jobs:
     timeout-minutes: 45
     env:
       ANDROID_USER_HOME: ${{ github.workspace }}/.android-user-home
-      ANDROID_EMULATOR_HOME: ${{ github.workspace }}/.android-user-home
-      ANDROID_AVD_HOME: ${{ github.workspace }}/.android-user-home/avd
-      ANDROID_SDK_HOME: ${{ github.workspace }}/.android-user-home
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       GOLEMIO_API_KEY: ${{ secrets.GOLEMIO_API_KEY }}
     steps:
@@ -50,13 +47,12 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Create Wear AVD
-        run: |
-          mkdir -p "$ANDROID_EMULATOR_HOME" "$ANDROID_AVD_HOME"
-          echo "no" | avdmanager create avd --force --name wear-ci --package "system-images;android-36;android-wear-signed;x86_64" --device "wearos_small_round"
-          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx "wear-ci"
+        run: echo "no" | avdmanager create avd --force --name wear-ci --package "system-images;android-36;android-wear-signed;x86_64"
 
       - name: Start Wear Emulator
         run: |
+          export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
+          export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
           nohup "$ANDROID_HOME/emulator/emulator" -avd wear-ci -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none > "$GITHUB_WORKSPACE/wear-emulator.log" 2>&1 &
           if ! timeout 300 adb wait-for-device; then
             cat "$GITHUB_WORKSPACE/wear-emulator.log"

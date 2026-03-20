@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      ANDROID_USER_HOME: ${{ github.workspace }}/.android-user-home
+      ANDROID_USER_HOME: ${{ github.workspace }}/.android
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       GOLEMIO_API_KEY: ${{ secrets.GOLEMIO_API_KEY }}
     steps:
@@ -51,6 +51,7 @@ jobs:
 
       - name: Start Wear Emulator
         run: |
+          export HOME="$GITHUB_WORKSPACE"
           export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
           export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
           nohup "$ANDROID_HOME/emulator/emulator" -avd wear-ci -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -skip-adb-auth -no-metrics > "$GITHUB_WORKSPACE/wear-emulator.log" 2>&1 &

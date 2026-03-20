@@ -6,7 +6,7 @@ This project uses GitHub Actions on GitHub-hosted runners. The setup is split in
 
 | Workflow | File | Trigger | Purpose |
 | --- | --- | --- | --- |
-| Android CI | `.github/workflows/android-ci.yml` | `pull_request`, `push` to `master`, `workflow_dispatch` | Main build, lint, unit test, screenshot verification, artifact upload |
+| Android CI | `.github/workflows/android-ci.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Main build, lint, unit test, screenshot verification, artifact upload |
 | Wear Screenshot Record | `.github/workflows/wear-screenshot-record.yml` | `workflow_dispatch` | Re-record Roborazzi screenshot baselines and upload generated images |
 | Wear UI Tests | `.github/workflows/wear-ui-tests.yml` | `workflow_dispatch` | Boot a Wear emulator and run instrumented UI tests |
 
@@ -29,7 +29,7 @@ These choices keep the common path fast while still supporting Android and Wear 
 
 File: `.github/workflows/android-ci.yml`
 
-This is the default workflow for pull requests and pushes to `master`. It is designed to give a strong signal without paying emulator startup cost on every change.
+This is the default workflow for pull requests and pushes to `main`. It is designed to give a strong signal without paying emulator startup cost on every change.
 
 It runs:
 
@@ -128,8 +128,8 @@ You can trigger the manual workflows from the GitHub Actions UI because both inc
 You can also trigger them with the GitHub CLI:
 
 ```bash
-gh workflow run "Wear Screenshot Record" --ref master
-gh workflow run "Wear UI Tests" --ref master
+gh workflow run "Wear Screenshot Record" --ref main
+gh workflow run "Wear UI Tests" --ref main
 ```
 
 To use `gh workflow run`, the token used by `gh` needs repository `Actions` permission with `Write` access.

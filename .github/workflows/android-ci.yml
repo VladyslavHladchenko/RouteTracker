@@ -21,7 +21,7 @@ on:
       - "gradlew.bat"
   push:
     branches:
-      - master
+      - main
     paths:
       - ".github/workflows/android-ci.yml"
       - ".github/workflows/wear-screenshot-record.yml"

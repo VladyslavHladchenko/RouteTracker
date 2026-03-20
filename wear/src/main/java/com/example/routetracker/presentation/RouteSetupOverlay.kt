@@ -332,6 +332,7 @@ private fun RouteSelection.withEndpoint(
 internal fun QuickRouteSwitchScreen(
     currentSelection: RouteSelection,
     favoriteRoutes: List<RouteSelection>,
+    onSwapRoute: (RouteSelection) -> Unit,
     onApplyFavorite: (RouteSelection) -> Unit,
     onEditFavorite: (RouteSelection) -> Unit,
     onDeleteFavorite: (RouteSelection) -> Unit,
@@ -365,6 +366,14 @@ internal fun QuickRouteSwitchScreen(
                     .padding(horizontal = 10.dp)
                     .padding(top = 2.dp),
                 textAlign = TextAlign.Center,
+            )
+        }
+        item {
+            ActionButton(
+                label = "Swap from / to",
+                topPadding = 10.dp,
+                testTag = UiTestTags.QUICK_SWITCH_SWAP_BUTTON,
+                onClick = { onSwapRoute(currentSelection.swappedEndpoints()) },
             )
         }
 

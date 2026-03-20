@@ -565,6 +565,9 @@ fun WearApp(routeRepo: RouteRepository) {
                     QuickRouteSwitchScreen(
                         currentSelection = selectionForQuickSwitch,
                         favoriteRoutes = favoritesForQuickSwitch,
+                        onSwapRoute = { selection ->
+                            applyRouteSelectionFromUi(selection)
+                        },
                         onApplyFavorite = { selection ->
                             applyRouteSelectionFromUi(selection)
                         },

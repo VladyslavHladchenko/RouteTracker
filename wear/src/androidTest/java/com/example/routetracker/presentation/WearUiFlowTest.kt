@@ -160,6 +160,7 @@ class WearUiFlowTest {
             QuickRouteSwitchScreen(
                 currentSelection = currentSelection,
                 favoriteRoutes = listOf(favoriteA, favoriteB),
+                onSwapRoute = {},
                 onApplyFavorite = { appliedSelection = it },
                 onEditFavorite = {},
                 onDeleteFavorite = {},
@@ -184,6 +185,44 @@ class WearUiFlowTest {
     }
 
     @Test
+    fun quickSwitchSwapAppliesSelectionBeforeFavorites() {
+        val currentSelection = samplePinnedSelection()
+        val favorite = sampleAnyPlatformSelection().copy(line = null)
+        var swappedSelection: RouteSelection? = null
+
+        setRouteTrackerContent {
+            QuickRouteSwitchScreen(
+                currentSelection = currentSelection,
+                favoriteRoutes = listOf(favorite),
+                onSwapRoute = { swappedSelection = it },
+                onApplyFavorite = {},
+                onEditFavorite = {},
+                onDeleteFavorite = {},
+                onOpenRouteSetup = {},
+            )
+        }
+
+        val swapButton = composeRule.onNodeWithTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON)
+        val firstFavorite = composeRule.onNodeWithTag(UiTestTags.favoriteRouteCard(favorite.stableKey))
+
+        swapButton.assertIsDisplayed()
+        firstFavorite.assertIsDisplayed()
+
+        val swapTop = swapButton.fetchSemanticsNode().boundsInRoot.top
+        val favoriteTop = firstFavorite.fetchSemanticsNode().boundsInRoot.top
+        assertTrue("Swap action should appear above favorites.", swapTop < favoriteTop)
+
+        swapButton.performClick()
+        composeRule.runOnIdle {
+            val applied = swappedSelection
+            requireNotNull(applied)
+            assertEquals(currentSelection.destination, applied.origin)
+            assertEquals(currentSelection.origin, applied.destination)
+            assertEquals(currentSelection.line, applied.line)
+        }
+    }
+
+    @Test
     fun favoriteLongPressOpensEditAndDeleteMenu() {
         val favorite = sampleAnyPlatformSelection()
 
@@ -191,6 +230,7 @@ class WearUiFlowTest {
             QuickRouteSwitchScreen(
                 currentSelection = favorite,
                 favoriteRoutes = listOf(favorite),
+                onSwapRoute = {},
                 onApplyFavorite = {},
                 onEditFavorite = {},
                 onDeleteFavorite = {},

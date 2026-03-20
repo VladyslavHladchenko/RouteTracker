@@ -52,7 +52,11 @@ jobs:
       - name: Start Wear Emulator
         run: |
           nohup emulator -avd wear-ci -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none > "$GITHUB_WORKSPACE/wear-emulator.log" 2>&1 &
-          adb wait-for-device
+          if ! timeout 300 adb wait-for-device; then
+            cat "$GITHUB_WORKSPACE/wear-emulator.log"
+            exit 1
+          fi
+          boot_completed=""
           for i in {1..120}; do
             boot_completed="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
             if [ "$boot_completed" = "1" ]; then

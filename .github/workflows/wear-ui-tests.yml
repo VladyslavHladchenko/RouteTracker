@@ -17,6 +17,9 @@ jobs:
     timeout-minutes: 45
     env:
       ANDROID_USER_HOME: ${{ github.workspace }}/.android-user-home
+      ANDROID_EMULATOR_HOME: ${{ github.workspace }}/.android-user-home
+      ANDROID_AVD_HOME: ${{ github.workspace }}/.android-user-home/avd
+      ANDROID_SDK_HOME: ${{ github.workspace }}/.android-user-home
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       GOLEMIO_API_KEY: ${{ secrets.GOLEMIO_API_KEY }}
     steps:
@@ -47,7 +50,10 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Create Wear AVD
-        run: echo "no" | avdmanager create avd --force --name wear-ci --package "system-images;android-36;android-wear-signed;x86_64"
+        run: |
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "no" | avdmanager create avd --force --name wear-ci --package "system-images;android-36;android-wear-signed;x86_64"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
 
       - name: Start Wear Emulator
         run: |

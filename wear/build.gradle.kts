@@ -7,6 +7,16 @@ val golemioApiKey = providers.gradleProperty("golemioApiKey")
     .orElse(providers.environmentVariable("GOLEMIO_API_KEY"))
     .orElse("")
     .get()
+val ciDebugKeystorePath = providers.environmentVariable("CI_DEBUG_KEYSTORE_PATH").orNull
+val ciDebugKeystorePassword = providers.environmentVariable("CI_DEBUG_KEYSTORE_PASSWORD")
+    .orElse("android")
+    .get()
+val ciDebugKeyAlias = providers.environmentVariable("CI_DEBUG_KEY_ALIAS")
+    .orElse("androiddebugkey")
+    .get()
+val ciDebugKeyPassword = providers.environmentVariable("CI_DEBUG_KEY_PASSWORD")
+    .orElse(ciDebugKeystorePassword)
+    .get()
 
 android {
     namespace = "com.example.routetracker"
@@ -30,7 +40,23 @@ android {
         )
     }
 
+    signingConfigs {
+        if (ciDebugKeystorePath != null) {
+            create("ciDebug") {
+                storeFile = file(ciDebugKeystorePath)
+                storePassword = ciDebugKeystorePassword
+                keyAlias = ciDebugKeyAlias
+                keyPassword = ciDebugKeyPassword
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (ciDebugKeystorePath != null) {
+                signingConfig = signingConfigs.getByName("ciDebug")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

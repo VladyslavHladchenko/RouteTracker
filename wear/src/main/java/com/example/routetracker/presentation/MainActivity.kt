@@ -1283,8 +1283,7 @@ private fun ApiKeyInputCard(
                     hint = "Paste API key"
                     inputType =
                         InputType.TYPE_CLASS_TEXT or
-                            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
-                            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
                     imeOptions = EditorInfo.IME_ACTION_DONE
                     addTextChangedListener(
                         object : TextWatcher {

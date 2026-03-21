@@ -2,6 +2,17 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+val ciDebugKeystorePath = providers.environmentVariable("CI_DEBUG_KEYSTORE_PATH").orNull
+val ciDebugKeystorePassword = providers.environmentVariable("CI_DEBUG_KEYSTORE_PASSWORD")
+    .orElse("android")
+    .get()
+val ciDebugKeyAlias = providers.environmentVariable("CI_DEBUG_KEY_ALIAS")
+    .orElse("androiddebugkey")
+    .get()
+val ciDebugKeyPassword = providers.environmentVariable("CI_DEBUG_KEY_PASSWORD")
+    .orElse(ciDebugKeystorePassword)
+    .get()
+
 android {
     namespace = "com.example.routetracker"
     compileSdk {
@@ -20,7 +31,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (ciDebugKeystorePath != null) {
+            create("ciDebug") {
+                storeFile = file(ciDebugKeystorePath)
+                storePassword = ciDebugKeystorePassword
+                keyAlias = ciDebugKeyAlias
+                keyPassword = ciDebugKeyPassword
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (ciDebugKeystorePath != null) {
+                signingConfig = signingConfigs.getByName("ciDebug")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

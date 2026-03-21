@@ -33,14 +33,16 @@ This is the default workflow for pull requests and pushes to `main`. It is desig
 
 The workflow always reports a `Build And Test` check so it can be used with branch protection. For docs-only, README-only, and other non-Android changes, it exits early with a successful no-op result instead of running the Android toolchain.
 
+Within that one job, build, lint, and JVM test work are split into separate GitHub Actions steps so failures are easier to identify without paying the setup cost of separate jobs.
+
 It runs:
 
 ```bash
-./gradlew --no-daemon --stacktrace :mobile:assembleDebug
-./gradlew --no-daemon --stacktrace :wear:lintDebug
-./gradlew --no-daemon --stacktrace :wear:assembleDebug
-./gradlew --no-daemon --stacktrace :wear:assembleDebugAndroidTest
-./gradlew --no-daemon --stacktrace :wear:testDebugUnitTest -Proborazzi.test.verify=true
+./gradlew --stacktrace :mobile:assembleDebug
+./gradlew --stacktrace :wear:lintDebug
+./gradlew --stacktrace :wear:assembleDebug
+./gradlew --stacktrace :wear:assembleDebugAndroidTest
+./gradlew --stacktrace :wear:testDebugUnitTest -Proborazzi.test.verify=true
 ```
 
 Artifacts uploaded:
@@ -83,7 +85,7 @@ This workflow is intentionally manual because it updates screenshot outputs and 
 It runs:
 
 ```bash
-./gradlew --no-daemon --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.record=true
+./gradlew --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.record=true
 ```
 
 Artifacts uploaded:
@@ -105,7 +107,7 @@ This workflow is also manual because emulator startup is slower and more failure
 It runs:
 
 ```bash
-./gradlew --no-daemon --stacktrace :wear:connectedDebugAndroidTest
+./gradlew --stacktrace :wear:connectedDebugAndroidTest
 ```
 
 Artifacts uploaded:
@@ -128,7 +130,7 @@ The split follows Android CI best practices:
 - Run expensive emulator-based checks only when they are needed.
 - Always upload reports and artifacts so failures are inspectable after the run.
 - Use Gradle caching and a minimal SDK package set to reduce setup time.
-- Use `--no-daemon` in CI to avoid confusing "idle daemon still running" situations after work is already finished.
+- Prefer daemon-backed Gradle invocations in CI so split steps in the same job can reuse a warm JVM instead of paying repeated startup cost.
 
 ## Local command mapping
 

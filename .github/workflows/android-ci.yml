@@ -103,6 +103,26 @@ jobs:
         with:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36"
 
+      - name: Configure Stable Debug Keystore
+        if: steps.changes.outputs.should_build == 'true' && secrets.ANDROID_DEBUG_KEYSTORE_BASE64 != ''
+        shell: bash
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
+          DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore_dir="$RUNNER_TEMP/android-signing"
+          mkdir -p "$keystore_dir"
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$keystore_dir/debug.keystore"
+          {
+            echo "CI_DEBUG_KEYSTORE_PATH=$keystore_dir/debug.keystore"
+            echo "CI_DEBUG_KEYSTORE_PASSWORD=${DEBUG_KEYSTORE_PASSWORD:-android}"
+            echo "CI_DEBUG_KEY_ALIAS=${DEBUG_KEY_ALIAS:-androiddebugkey}"
+            echo "CI_DEBUG_KEY_PASSWORD=${DEBUG_KEY_PASSWORD:-${DEBUG_KEYSTORE_PASSWORD:-android}}"
+          } >> "$GITHUB_ENV"
+
       - name: Build, Lint, And Test
         if: steps.changes.outputs.should_build == 'true'
         run: >

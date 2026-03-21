@@ -48,6 +48,8 @@ Artifacts uploaded:
 - `android-apks`: debug APKs and test APKs from the build
 - `android-reports`: lint, unit test, and other generated reports
 
+If the optional stable debug-keystore secrets are configured, the debug APKs from `android-apks` keep the same signing identity across CI runs and can update an existing CI-installed app on a device or watch.
+
 Use this workflow for:
 
 - regular PR validation
@@ -171,6 +173,15 @@ There is also still a GitHub warning around `android-actions/setup-android@v3` b
 Repository secret expected by the workflows:
 
 - `GOLEMIO_API_KEY`
+
+Optional repository secrets for stable CI debug signing:
+
+- `ANDROID_DEBUG_KEYSTORE_BASE64`
+- `ANDROID_DEBUG_KEYSTORE_PASSWORD`
+- `ANDROID_DEBUG_KEY_ALIAS`
+- `ANDROID_DEBUG_KEY_PASSWORD`
+
+When these are set, `Android CI` decodes the keystore into the runner, exports signing environment variables, and both `mobile` and `wear` debug builds use that stable key instead of a runner-generated debug keystore.
 
 Workflow permissions are intentionally minimal:
 

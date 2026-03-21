@@ -67,6 +67,10 @@ Targeted commands:
 - The default workflow is `Build And Test` in `.github/workflows/android-ci.yml`.
 - Use `Wear Screenshot Record` when a UI change intentionally updates screenshot baselines.
 - Use `Wear UI Tests` only when emulator-backed validation is needed.
+- Distinguish local vs Codex cloud environments before choosing where to validate:
+  - local desktop / local CLI sessions: prefer GitHub Actions for broad build-and-test validation so the user's machine stays responsive; only run the smallest local command needed for fast feedback or device-specific work
+  - Codex web / Codex cloud sessions: use the cloud environment for targeted builds and tests when they are relevant, because they do not load the user's machine; still use GitHub Actions as the final source of truth for branch validation
+  - practical signal: if `CODEX_CI` is present, treat the session as Codex cloud
 - If the Codex cloud environment cannot fully reproduce the Android toolchain or emulator setup, do not invent weaker substitutes. State clearly what was validated locally and what still depends on CI.
 - If heavier Android or Roborazzi tasks start correctly but do not finish within the session budget, report that they were attempted, do not claim success, and rely on CI for the final result.
 - When UI changes affect snapshots, update screenshot baselines and make the visual change easy to inspect in the PR.

@@ -6,6 +6,9 @@ object UiTestTags {
     const val QUICK_SWITCH_SWAP_BUTTON = "quick_switch_swap_button"
     const val QUICK_SWITCH_NEW_ROUTE_BUTTON = "quick_switch_new_route_button"
     const val SETTINGS_CLOSE_BUTTON = "settings_close_button"
+    const val SETTINGS_API_KEY_BUTTON = "settings_api_key_button"
+    const val SETTINGS_API_KEY_SAVE_BUTTON = "settings_api_key_save_button"
+    const val SETTINGS_API_KEY_CLEAR_BUTTON = "settings_api_key_clear_button"
     const val TRIP_DETAILS_CLOSE_BUTTON = "trip_details_close_button"
 
     fun departureCard(rowKey: String): String = "departure_card:$rowKey"

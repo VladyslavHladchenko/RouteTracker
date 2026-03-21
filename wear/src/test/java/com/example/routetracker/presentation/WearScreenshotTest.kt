@@ -180,6 +180,22 @@ class WearScreenshotTest {
     }
 
     @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_apiKeySettings() {
+        setRouteTrackerContent {
+            ApiKeySettingsScreen(
+                value = "pid-demo-key-1234",
+                sourceLabel = "Watch override",
+                onValueChange = {},
+                onSave = {},
+                onUseBuiltIn = {},
+                onDismiss = {},
+            )
+        }
+        captureScreen("small-round/settings_api_key.png")
+    }
+
+    @Test
     @Config(qualifiers = LARGE_ROUND_QUALIFIERS)
     fun largeRound_routeSetupHome() {
         val currentSelection = samplePinnedSelection()

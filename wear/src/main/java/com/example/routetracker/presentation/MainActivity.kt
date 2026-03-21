@@ -1,7 +1,13 @@
 package com.example.routetracker.presentation
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
 import android.util.Log
+import android.view.Gravity
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -27,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,6 +44,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
@@ -69,6 +77,7 @@ private const val TAG = "RouteTrackerUi"
 private const val HALF_MINUTE_MILLIS = 30_000L
 private const val BOARD_ROUTE = "board"
 private const val SETTINGS_ROUTE = "settings"
+private const val SETTINGS_API_KEY_ROUTE = "settings_api_key"
 private const val QUICK_SWITCH_ROUTE = "quick_switch"
 private const val ROUTE_SETUP_ROUTE = "route_setup"
 private const val TRIP_DETAILS_ROUTE = "trip_details"
@@ -100,6 +109,8 @@ fun WearApp(routeRepo: RouteRepository) {
     var liveSnapshotCacheLabel by remember { mutableStateOf(routeRepo.getLiveSnapshotCacheLabel()) }
     var gtfsTripDetailCacheLabel by remember { mutableStateOf(routeRepo.getGtfsTripDetailCacheLabel()) }
     var vehiclePositionCacheLabel by remember { mutableStateOf(routeRepo.getVehiclePositionCacheLabel()) }
+    var apiKeySourceLabel by remember { mutableStateOf(routeRepo.getApiKeySourceLabel()) }
+    var apiKeyDraft by remember { mutableStateOf(routeRepo.getApiKeyOverride()) }
     var routeSetupSeedSelection by remember { mutableStateOf<RouteSelection?>(null) }
     var routeSetupEditingFavoriteStableKey by remember { mutableStateOf<String?>(null) }
     var selectedDeparture by remember { mutableStateOf<RouteDeparture?>(null) }
@@ -135,6 +146,7 @@ fun WearApp(routeRepo: RouteRepository) {
         liveSnapshotCacheLabel = routeRepo.getLiveSnapshotCacheLabel()
         gtfsTripDetailCacheLabel = routeRepo.getGtfsTripDetailCacheLabel()
         vehiclePositionCacheLabel = routeRepo.getVehiclePositionCacheLabel()
+        apiKeySourceLabel = routeRepo.getApiKeySourceLabel()
     }
 
     fun refreshRouteState() {
@@ -323,6 +335,16 @@ fun WearApp(routeRepo: RouteRepository) {
         refreshSettingsState()
     }
 
+    suspend fun saveApiKeyOverride(value: String) {
+        Log.d(TAG, "Saving Golemio API key override from settings.")
+        withContext(Dispatchers.IO) {
+            routeRepo.setApiKeyOverride(value)
+        }
+        apiKeyDraft = routeRepo.getApiKeyOverride()
+        refreshSettingsState()
+        loadSnapshot(forceRefresh = true, requestSurfaceRefresh = true)
+    }
+
     DisposableEffect(navController) {
         val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
             currentScreenRoute = destination.route ?: BOARD_ROUTE
@@ -504,6 +526,7 @@ fun WearApp(routeRepo: RouteRepository) {
                     val liveSnapshotCacheForSettings = latestLiveSnapshotCacheLabel.value
                     val gtfsTripDetailCacheForSettings = latestGtfsTripDetailCacheLabel.value
                     val vehiclePositionCacheForSettings = latestVehiclePositionCacheLabel.value
+                    val apiKeySourceForSettings = apiKeySourceLabel
 
                     SettingsScreen(
                         showSecondsEnabled = showSecondsForSettings,
@@ -513,6 +536,7 @@ fun WearApp(routeRepo: RouteRepository) {
                         liveSnapshotCacheLabel = liveSnapshotCacheForSettings,
                         gtfsTripDetailCacheLabel = gtfsTripDetailCacheForSettings,
                         vehiclePositionCacheLabel = vehiclePositionCacheForSettings,
+                        apiKeySourceLabel = apiKeySourceForSettings,
                         onToggleShowSeconds = {
                             coroutineScope.launch {
                                 toggleShowSeconds()
@@ -551,6 +575,35 @@ fun WearApp(routeRepo: RouteRepository) {
                         onCycleVehiclePositionCache = {
                             coroutineScope.launch {
                                 cycleVehiclePositionCache()
+                            }
+                        },
+                        onEditApiKey = {
+                            apiKeyDraft = routeRepo.getApiKeyOverride()
+                            navController.navigate(SETTINGS_API_KEY_ROUTE)
+                        },
+                        onDismiss = {
+                            navController.popBackStack()
+                        },
+                    )
+                }
+
+                composable(SETTINGS_API_KEY_ROUTE) {
+                    ApiKeySettingsScreen(
+                        value = apiKeyDraft,
+                        sourceLabel = apiKeySourceLabel,
+                        onValueChange = { newValue ->
+                            apiKeyDraft = newValue
+                        },
+                        onSave = {
+                            coroutineScope.launch {
+                                saveApiKeyOverride(apiKeyDraft)
+                                navController.popBackStack()
+                            }
+                        },
+                        onUseBuiltIn = {
+                            coroutineScope.launch {
+                                saveApiKeyOverride("")
+                                navController.popBackStack()
                             }
                         },
                         onDismiss = {
@@ -833,6 +886,7 @@ internal fun SettingsScreen(
     liveSnapshotCacheLabel: String,
     gtfsTripDetailCacheLabel: String,
     vehiclePositionCacheLabel: String,
+    apiKeySourceLabel: String,
     onToggleShowSeconds: () -> Unit,
     onToggleDetailsDialogAutoRefresh: () -> Unit,
     onDecreaseVerifiedMatchCount: () -> Unit,
@@ -841,6 +895,7 @@ internal fun SettingsScreen(
     onCycleLiveSnapshotCache: () -> Unit,
     onCycleGtfsTripDetailCache: () -> Unit,
     onCycleVehiclePositionCache: () -> Unit,
+    onEditApiKey: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
@@ -929,6 +984,22 @@ internal fun SettingsScreen(
                     .padding(top = 12.dp),
                 textAlign = TextAlign.Center,
             )
+        }
+        item {
+            Button(
+                onClick = onEditApiKey,
+                modifier = Modifier
+                    .testTag(UiTestTags.SETTINGS_API_KEY_BUTTON)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .padding(top = 8.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            ) {
+                Text("API key: $apiKeySourceLabel")
+            }
         }
         item {
             Button(
@@ -1067,6 +1138,184 @@ internal fun SettingsScreen(
                 Text("Close")
             }
         }
+    }
+}
+
+@Composable
+internal fun ApiKeySettingsScreen(
+    value: String,
+    sourceLabel: String,
+    onValueChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onUseBuiltIn: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
+
+    RoundScalingPage(state = listState) {
+        item {
+            Text(
+                text = "Golemio API key",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp),
+                textAlign = TextAlign.Center,
+            )
+        }
+        item {
+            Text(
+                text = "Watch setting overrides the built-in key.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .padding(top = 6.dp),
+                textAlign = TextAlign.Center,
+            )
+        }
+        item {
+            Text(
+                text = "Current source: $sourceLabel",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .padding(top = 4.dp),
+                textAlign = TextAlign.Center,
+            )
+        }
+        item {
+            ApiKeyInputCard(
+                value = value,
+                onValueChange = onValueChange,
+            )
+        }
+        item {
+            Button(
+                onClick = onSave,
+                modifier = Modifier
+                    .testTag(UiTestTags.SETTINGS_API_KEY_SAVE_BUTTON)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .padding(top = 12.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            ) {
+                Text("Save key")
+            }
+        }
+        item {
+            Button(
+                onClick = onUseBuiltIn,
+                modifier = Modifier
+                    .testTag(UiTestTags.SETTINGS_API_KEY_CLEAR_BUTTON)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .padding(top = 8.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            ) {
+                Text("Use built-in key")
+            }
+        }
+        item {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .padding(top = 8.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            ) {
+                Text("Back")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ApiKeyInputCard(
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val hintColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp)
+            .padding(top = 12.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = "Paste key",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        AndroidView(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            factory = { context ->
+                EditText(context).apply {
+                    setSingleLine(true)
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    background = null
+                    setPadding(0, 0, 0, 0)
+                    setTextColor(textColor)
+                    setHintTextColor(hintColor)
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
+                    hint = "Paste API key"
+                    inputType =
+                        InputType.TYPE_CLASS_TEXT or
+                            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    imeOptions = EditorInfo.IME_ACTION_DONE
+                    addTextChangedListener(
+                        object : TextWatcher {
+                            override fun beforeTextChanged(
+                                s: CharSequence?,
+                                start: Int,
+                                count: Int,
+                                after: Int,
+                            ) = Unit
+
+                            override fun onTextChanged(
+                                s: CharSequence?,
+                                start: Int,
+                                before: Int,
+                                count: Int,
+                            ) = Unit
+
+                            override fun afterTextChanged(s: Editable?) {
+                                onValueChange(s?.toString().orEmpty())
+                            }
+                        },
+                    )
+                }
+            },
+            update = { editText ->
+                if (editText.text.toString() != value) {
+                    editText.setText(value)
+                    editText.setSelection(editText.text.length)
+                }
+            },
+        )
     }
 }
 

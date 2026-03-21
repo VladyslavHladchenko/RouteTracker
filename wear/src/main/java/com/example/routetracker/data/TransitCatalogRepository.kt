@@ -18,7 +18,7 @@ private val PRAGUE_ZONE: ZoneId = ZoneId.of("Europe/Prague")
 
 class TransitCatalogRepository(
     private val context: Context,
-    private val apiClient: GolemioApiClient = GolemioApiClient(),
+    private val apiClient: GolemioApiClient = createGolemioApiClient(context),
 ) {
     @Volatile
     private var cachedCatalog: TransitCatalog? = null

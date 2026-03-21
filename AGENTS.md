@@ -38,11 +38,12 @@ Notes:
 - On Linux or in Codex cloud containers, run `chmod +x ./gradlew` first if `./gradlew` fails with `Permission denied`.
 - In Codex cloud, if the wrapper download is blocked but an installed `gradle` binary is available at exactly version `9.3.1`, it is acceptable to use `gradle` instead of `./gradlew` for validation.
 - For install-compatible local debug builds, keep `GRADLE_USER_HOME` local if needed, but leave `ANDROID_USER_HOME` unset or point it at `%USERPROFILE%\\.android`. Setting `ANDROID_USER_HOME=.android-local` changes the debug keystore and will break in-place updates over Android Studio or CI-installed builds.
+- `gradle.properties` enables Gradle configuration cache by default with problems downgraded to warnings, so local CLI runs and IDE-delegated Gradle tasks reuse it unless explicitly overridden.
 
 Primary CI-equivalent command set:
 
 ```bash
-./gradlew --no-daemon --stacktrace --continue \
+./gradlew --stacktrace --continue \
   :mobile:assembleDebug \
   :wear:lintDebug \
   :wear:assembleDebug \
@@ -54,11 +55,11 @@ Primary CI-equivalent command set:
 Targeted commands:
 
 ```bash
-./gradlew --no-daemon --stacktrace :wear:assembleDebug
-./gradlew --no-daemon --stacktrace :wear:assembleDebugAndroidTest
-./gradlew --no-daemon --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.verify=true
-./gradlew --no-daemon --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.record=true
-./gradlew --no-daemon --stacktrace :wear:connectedDebugAndroidTest
+./gradlew --stacktrace :wear:assembleDebug
+./gradlew --stacktrace :wear:assembleDebugAndroidTest
+./gradlew --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.verify=true
+./gradlew --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.record=true
+./gradlew --stacktrace :wear:connectedDebugAndroidTest
 ```
 
 ## Validation strategy

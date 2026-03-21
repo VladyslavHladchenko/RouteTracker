@@ -104,7 +104,7 @@ jobs:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36"
 
       - name: Configure Stable Debug Keystore
-        if: steps.changes.outputs.should_build == 'true' && secrets.ANDROID_DEBUG_KEYSTORE_BASE64 != ''
+        if: steps.changes.outputs.should_build == 'true'
         shell: bash
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
@@ -113,6 +113,10 @@ jobs:
           DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          if [[ -z "${DEBUG_KEYSTORE_BASE64:-}" ]]; then
+            echo "No stable debug keystore configured."
+            exit 0
+          fi
           keystore_dir="$RUNNER_TEMP/android-signing"
           mkdir -p "$keystore_dir"
           printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$keystore_dir/debug.keystore"

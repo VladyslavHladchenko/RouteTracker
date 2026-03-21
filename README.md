@@ -491,6 +491,15 @@ At runtime on the watch, the app now resolves the key in this order:
 
 If neither source is available, the app fails fast when it first tries to call the API.
 
+For debug Wear builds, you can also seed or clear the watch override over `adb` instead of typing on the watch:
+
+```powershell
+adb -s <device-serial> shell am broadcast -a com.example.routetracker.debug.SET_API_KEY -n com.example.routetracker/.debug.DebugApiKeyOverrideReceiver --es value "<your-api-key>"
+adb -s <device-serial> shell am broadcast -a com.example.routetracker.debug.CLEAR_API_KEY -n com.example.routetracker/.debug.DebugApiKeyOverrideReceiver
+```
+
+This receiver exists only in debug builds. `GOLEMIO_API_KEY` is still a build-time input, not a runtime environment variable on the watch.
+
 Compose UI test APK:
 
 ```powershell

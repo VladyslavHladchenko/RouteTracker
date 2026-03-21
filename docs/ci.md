@@ -35,14 +35,16 @@ The workflow always reports a `Build And Test` check so it can be used with bran
 
 Within that one job, build, lint, and JVM test work are split into separate GitHub Actions steps so failures are easier to identify without paying the setup cost of separate jobs.
 
+`Android CI` also enables Gradle configuration cache and provides an encrypted cache key to `gradle/actions/setup-gradle`, so pushes to `main` can populate reusable configuration-cache entries and later PR runs can restore them in read-only mode.
+
 It runs:
 
 ```bash
-./gradlew --stacktrace :mobile:assembleDebug
-./gradlew --stacktrace :wear:lintDebug
-./gradlew --stacktrace :wear:assembleDebug
-./gradlew --stacktrace :wear:assembleDebugAndroidTest
-./gradlew --stacktrace :wear:testDebugUnitTest -Proborazzi.test.verify=true
+./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :mobile:assembleDebug
+./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:lintDebug
+./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:assembleDebug
+./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:assembleDebugAndroidTest
+./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:testDebugUnitTest -Proborazzi.test.verify=true
 ```
 
 Artifacts uploaded:
@@ -175,6 +177,7 @@ There is also still a GitHub warning around `android-actions/setup-android@v3` b
 Repository secret expected by the workflows:
 
 - `GOLEMIO_API_KEY`
+- `GRADLE_ENCRYPTION_KEY` for encrypted Gradle configuration-cache reuse in `Android CI`
 
 Optional repository secrets for stable CI debug signing:
 

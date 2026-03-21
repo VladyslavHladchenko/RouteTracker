@@ -40,6 +40,11 @@ data class RouteSelection(
     val destination: StopSelection,
     val line: LineSelection? = null,
 ) {
+    fun swappedEndpoints(): RouteSelection = copy(
+        origin = destination,
+        destination = origin,
+    )
+
     val stableKey: String
         get() = listOf(
             origin.stationKey,

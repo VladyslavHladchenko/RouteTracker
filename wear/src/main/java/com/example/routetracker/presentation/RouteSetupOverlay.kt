@@ -12,6 +12,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -332,6 +334,7 @@ private fun RouteSelection.withEndpoint(
 internal fun QuickRouteSwitchScreen(
     currentSelection: RouteSelection,
     favoriteRoutes: List<RouteSelection>,
+    onSwapRoute: (RouteSelection) -> Unit,
     onApplyFavorite: (RouteSelection) -> Unit,
     onEditFavorite: (RouteSelection) -> Unit,
     onDeleteFavorite: (RouteSelection) -> Unit,
@@ -346,26 +349,37 @@ internal fun QuickRouteSwitchScreen(
 
     RoundScalingPage(state = listState) {
         item {
-            Text(
-                text = "Route switch",
-                style = MaterialTheme.typography.titleMedium,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        item {
-            Text(
-                text = currentSelection.routeSummaryLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 2.dp),
-                textAlign = TextAlign.Center,
-            )
+                    .testTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON)
+                    .pointerInput(currentSelection.stableKey) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                onSwapRoute(currentSelection.swappedEndpoints())
+                            },
+                        )
+                    },
+            ) {
+                Text(
+                    text = "Route switch",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp),
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = currentSelection.routeSummaryLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
+                        .padding(top = 2.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
 
         val favoriteForMenu = selectedFavoriteForMenu

@@ -169,6 +169,7 @@ class WearScreenshotTest {
             QuickRouteSwitchScreen(
                 currentSelection = currentSelection,
                 favoriteRoutes = favoriteRoutes,
+                onSwapRoute = {},
                 onApplyFavorite = {},
                 onEditFavorite = {},
                 onDeleteFavorite = {},

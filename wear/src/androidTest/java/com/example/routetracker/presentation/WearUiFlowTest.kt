@@ -3,6 +3,7 @@ package com.example.routetracker.presentation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -160,6 +161,7 @@ class WearUiFlowTest {
             QuickRouteSwitchScreen(
                 currentSelection = currentSelection,
                 favoriteRoutes = listOf(favoriteA, favoriteB),
+                onSwapRoute = {},
                 onApplyFavorite = { appliedSelection = it },
                 onEditFavorite = {},
                 onDeleteFavorite = {},
@@ -184,6 +186,44 @@ class WearUiFlowTest {
     }
 
     @Test
+    fun quickSwitchSwapAppliesSelectionBeforeFavorites() {
+        val currentSelection = samplePinnedSelection()
+        val favorite = sampleAnyPlatformSelection().copy(line = null)
+        var swappedSelection: RouteSelection? = null
+
+        setRouteTrackerContent {
+            QuickRouteSwitchScreen(
+                currentSelection = currentSelection,
+                favoriteRoutes = listOf(favorite),
+                onSwapRoute = { swappedSelection = it },
+                onApplyFavorite = {},
+                onEditFavorite = {},
+                onDeleteFavorite = {},
+                onOpenRouteSetup = {},
+            )
+        }
+
+        val swapButton = composeRule.onNodeWithTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON)
+        val firstFavorite = composeRule.onNodeWithTag(UiTestTags.favoriteRouteCard(favorite.stableKey))
+
+        swapButton.assertIsDisplayed()
+        firstFavorite.assertIsDisplayed()
+
+        val swapTop = swapButton.fetchSemanticsNode().boundsInRoot.top
+        val favoriteTop = firstFavorite.fetchSemanticsNode().boundsInRoot.top
+        assertTrue("Swap action should appear above favorites.", swapTop < favoriteTop)
+
+        swapButton.performTouchInput { doubleClick(center) }
+        composeRule.runOnIdle {
+            val applied = swappedSelection
+            requireNotNull(applied)
+            assertEquals(currentSelection.destination, applied.origin)
+            assertEquals(currentSelection.origin, applied.destination)
+            assertEquals(currentSelection.line, applied.line)
+        }
+    }
+
+    @Test
     fun favoriteLongPressOpensEditAndDeleteMenu() {
         val favorite = sampleAnyPlatformSelection()
 
@@ -191,6 +231,7 @@ class WearUiFlowTest {
             QuickRouteSwitchScreen(
                 currentSelection = favorite,
                 favoriteRoutes = listOf(favorite),
+                onSwapRoute = {},
                 onApplyFavorite = {},
                 onEditFavorite = {},
                 onDeleteFavorite = {},

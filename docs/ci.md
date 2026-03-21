@@ -35,7 +35,7 @@ The workflow always reports a `Build And Test` check so it can be used with bran
 
 Within that one job, build, lint, and JVM test work are split into separate GitHub Actions steps so failures are easier to identify without paying the setup cost of separate jobs.
 
-`Android CI` also enables Gradle configuration cache and provides an encrypted cache key to `gradle/actions/setup-gradle`, so pushes to `main` can populate reusable configuration-cache entries and later PR runs can restore them in read-only mode.
+`Android CI`, `Wear Screenshot Record`, and `Wear UI Tests` all enable Gradle configuration cache and provide an encrypted cache key to `gradle/actions/setup-gradle`, so runs on `main` can populate reusable configuration-cache entries and later non-default-branch runs can restore them in read-only mode.
 
 It runs:
 
@@ -87,7 +87,7 @@ This workflow is intentionally manual because it updates screenshot outputs and 
 It runs:
 
 ```bash
-./gradlew --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.record=true
+./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.record=true
 ```
 
 Artifacts uploaded:
@@ -109,7 +109,7 @@ This workflow is also manual because emulator startup is slower and more failure
 It runs:
 
 ```bash
-./gradlew --stacktrace :wear:connectedDebugAndroidTest
+./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:connectedDebugAndroidTest
 ```
 
 Artifacts uploaded:
@@ -177,7 +177,7 @@ There is also still a GitHub warning around `android-actions/setup-android@v3` b
 Repository secret expected by the workflows:
 
 - `GOLEMIO_API_KEY`
-- `GRADLE_ENCRYPTION_KEY` for encrypted Gradle configuration-cache reuse in `Android CI`
+- `GRADLE_ENCRYPTION_KEY` for encrypted Gradle configuration-cache reuse in `Android CI`, `Wear Screenshot Record`, and `Wear UI Tests`
 
 Optional repository secrets for stable CI debug signing:
 

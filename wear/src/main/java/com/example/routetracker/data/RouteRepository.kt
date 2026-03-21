@@ -24,7 +24,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private const val TAG = "RouteRepository"
-private const val PREFS_NAME = "route_prefs"
 private const val PREF_LEGACY_DIRECTION = "selected_direction"
 private const val PREF_CURRENT_ROUTE_SELECTION = "current_route_selection"
 private const val PREF_FAVORITE_ROUTE_SELECTIONS = "favorite_route_selections"
@@ -68,8 +67,9 @@ fun formatDisplayTime(
 
 class RouteRepository(private val context: Context) {
     private val prefs: SharedPreferences =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val apiClient = GolemioApiClient()
+        context.getSharedPreferences(ROUTE_PREFS_NAME, Context.MODE_PRIVATE)
+    private val apiKeyStore = GolemioApiKeyStore(context)
+    private val apiClient = createGolemioApiClient(context)
     private val catalogRepository = TransitCatalogRepository(context, apiClient)
 
     companion object {
@@ -417,6 +417,33 @@ class RouteRepository(private val context: Context) {
 
     fun getVerifiedMatchCountLabel(): String {
         return getVerifiedMatchCount().toString()
+    }
+
+    fun getApiKeyOverride(): String {
+        return apiKeyStore.getOverride()
+    }
+
+    fun getApiKeySourceLabel(): String {
+        return apiKeyStore.getSourceLabel()
+    }
+
+    fun setApiKeyOverride(value: String) {
+        val normalizedValue = value.trim()
+        if (getApiKeyOverride() == normalizedValue) {
+            Log.d(TAG, "Golemio API key override unchanged.")
+            return
+        }
+
+        apiKeyStore.setOverride(normalizedValue)
+        synchronized(snapshotLock) {
+            cachedSnapshot = null
+            cacheTimestampElapsedRealtime = 0L
+        }
+        tripDetailCache.clear()
+        vehiclePositionCache.clear()
+        catalogRepository.clearMemoryCache()
+        Log.d(TAG, "Golemio API key source changed to ${apiKeyStore.getSourceLabel()}")
+        requestSurfaceRefresh()
     }
 
     fun setAutoUpdatesEnabled(enabled: Boolean) {

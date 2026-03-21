@@ -1,7 +1,6 @@
 package com.example.routetracker.data
 
 import android.util.Log
-import com.example.routetracker.BuildConfig
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -26,7 +25,9 @@ data class ApiArrayResponse(
     val cacheControl: String?,
 )
 
-class GolemioApiClient {
+class GolemioApiClient(
+    private val apiTokenProvider: () -> String,
+) {
     fun getObject(
         path: String,
         params: List<Pair<String, String>> = emptyList(),
@@ -56,7 +57,7 @@ class GolemioApiClient {
         params: List<Pair<String, String>>,
         retryOnRateLimit: Boolean,
     ): RawApiResponse {
-        val apiToken = requireApiToken()
+        val apiToken = apiTokenProvider()
         val query = params.joinToString("&") { (key, value) ->
             "${key.urlEncode()}=${value.urlEncode()}"
         }
@@ -142,14 +143,6 @@ class GolemioApiClient {
         val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
         return stream?.bufferedReader()?.use { it.readText() }.orEmpty()
     }
-}
-
-private fun requireApiToken(): String {
-    val token = BuildConfig.GOLEMIO_API_KEY.trim()
-    check(token.isNotEmpty()) {
-        "Missing Golemio API key. Set golemioApiKey in ~/.gradle/gradle.properties or GOLEMIO_API_KEY in the environment."
-    }
-    return token
 }
 
 internal class ApiException(

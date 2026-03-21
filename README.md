@@ -104,6 +104,7 @@ The watch settings currently expose:
 
 - `Show seconds`
 - `Details auto-refresh`
+- `Golemio API key override`
 - `Verified matches`
 - `Refresh stop catalog`
 - live snapshot cache
@@ -479,11 +480,16 @@ Unit tests:
 Golemio API key:
 
 - local Android Studio / local device builds: set `golemioApiKey=...` in `~/.gradle/gradle.properties`
-- local shell builds: either use the same Gradle property or set `GOLEMIO_API_KEY` in the environment
+- local shell builds: either use the same Gradle property or set `GOLEMIO_API_KEY` in the environment before building
 - GitHub Actions: store `GOLEMIO_API_KEY` as a workflow secret and expose it to the Gradle step
 - Codex cloud: set `GOLEMIO_API_KEY` in the environment or write `golemioApiKey` into `~/.gradle/gradle.properties` during the setup script
 
-The Wear app now reads the token from `BuildConfig.GOLEMIO_API_KEY`, which is generated from the Gradle property or environment variable at build time. If the key is missing, the app fails fast when it first tries to call the API.
+At runtime on the watch, the app now resolves the key in this order:
+
+1. a key saved in watch `Settings`
+2. `BuildConfig.GOLEMIO_API_KEY` baked into the app at build time from the Gradle property or build environment
+
+If neither source is available, the app fails fast when it first tries to call the API.
 
 Compose UI test APK:
 
@@ -616,4 +622,3 @@ These stay out of version control:
 - API tokens and other personal credentials
 
 They are useful during local investigation, but should not be part of the public repository.
-

@@ -524,6 +524,43 @@ Behavior tests:
   - favorite long-press menu
   - trip-details close action
 
+## Feature Branch Workflow
+
+For normal feature work, the repo flow is:
+
+1. Implement the change.
+2. Run the smallest local command that proves it, for example `./gradlew :wear:assembleDebug` or one targeted test command from [docs/ci.md](docs/ci.md).
+3. Commit and push your branch.
+4. If the branch already has a pull request, GitHub starts `Android CI` automatically on PR updates. If there is no PR yet, trigger the same workflow manually:
+
+```powershell
+gh workflow run "Android CI" --ref <your-branch>
+```
+
+5. Find the run ID and watch it from the terminal:
+
+```powershell
+gh run list --branch <your-branch> --workflow "Android CI" --limit 5
+gh run watch <run-id> --compact --interval 5
+```
+
+6. If a run fails, inspect the failure logs directly:
+
+```powershell
+gh run view <run-id> --log-failed
+```
+
+7. Trigger the heavier manual workflows only when the change needs them:
+
+```powershell
+gh workflow run "Wear Screenshot Record" --ref <your-branch>
+gh workflow run "Wear UI Tests" --ref <your-branch>
+```
+
+8. After dispatching those workflows, use `gh run list` and `gh run watch` the same way to follow them to completion.
+
+`gh workflow run` starts a workflow, while `gh run` is what you use to list, watch, inspect, and rerun the resulting runs. For docs-only or README-only changes, `Android CI` still reports success, but it exits early as a no-op by design.
+
 ## Known Environment Quirk
 
 On this machine, Kotlin daemon startup fails with `AccessDeniedException` under:

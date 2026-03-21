@@ -212,7 +212,7 @@ class WearUiFlowTest {
         val favoriteTop = firstFavorite.fetchSemanticsNode().boundsInRoot.top
         assertTrue("Swap action should appear above favorites.", swapTop < favoriteTop)
 
-        swapButton.performClick()
+        swapButton.performTouchInput { doubleClick() }
         composeRule.runOnIdle {
             val applied = swappedSelection
             requireNotNull(applied)

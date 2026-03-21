@@ -9,11 +9,10 @@ import android.view.Gravity
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import androidx.activity.compose.BackHandler
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +20,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,7 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -42,7 +40,6 @@ import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
-import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.example.routetracker.data.formatBoardingStopCount
@@ -352,35 +349,35 @@ internal fun QuickRouteSwitchScreen(
 
     RoundScalingPage(state = listState) {
         item {
-            Text(
-                text = "Route switch",
-                style = MaterialTheme.typography.titleMedium,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        item {
-            Text(
-                text = currentSelection.routeSummaryLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 2.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        item {
-            val favoriteForMenu = selectedFavoriteForMenu
-            if (favoriteForMenu == null) {
-                QuickSwitchSectionHeader(
-                    label = if (favoriteRoutes.isEmpty()) "Swap route" else "Favorites",
-                    topPadding = 8.dp,
-                    testTag = UiTestTags.QUICK_SWITCH_SWAP_BUTTON,
-                    onSwapRoute = { onSwapRoute(currentSelection.swappedEndpoints()) },
+                    .testTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON)
+                    .pointerInput(currentSelection.stableKey) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                onSwapRoute(currentSelection.swappedEndpoints())
+                            },
+                        )
+                    },
+            ) {
+                Text(
+                    text = "Route switch",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp),
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = currentSelection.routeSummaryLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
+                        .padding(top = 2.dp),
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -429,10 +426,22 @@ internal fun QuickRouteSwitchScreen(
                 RouteSetupInfoCard(
                     title = "No favorites",
                     value = "Save routes in the full setup, then switch them from here.",
-                    topPadding = 8.dp,
+                    topPadding = 10.dp,
                 )
             }
         } else {
+            item {
+                Text(
+                    text = "Favorites",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
+                        .padding(top = 10.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
             favoriteRoutes.forEach { favorite ->
                 item {
                     FavoriteRouteCard(
@@ -1110,45 +1119,5 @@ private fun ActionButton(
         },
     ) {
         Text(label)
-    }
-}
-
-@Composable
-private fun QuickSwitchSectionHeader(
-    label: String,
-    topPadding: androidx.compose.ui.unit.Dp,
-    testTag: String? = null,
-    onSwapRoute: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .padding(top = topPadding),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Button(
-            onClick = onSwapRoute,
-            modifier = Modifier
-                .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-                .size(32.dp),
-            colors = ButtonDefaults.filledTonalButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        ) {
-            Icon(
-                painter = rememberVectorPainter(Icons.Filled.SwapHoriz),
-                contentDescription = "Swap route",
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp),
-        )
     }
 }

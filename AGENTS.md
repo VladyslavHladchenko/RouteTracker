@@ -26,6 +26,7 @@
 - Do not commit or push directly to protected `main`. Work on a task branch and deliver changes through a pull request.
 - Never commit machine-specific files, caches, local properties, APK outputs, or generated local artifacts unless the task is specifically about committed screenshot baselines.
 - Never add or expose real API keys, tokens, signing files, or other secrets.
+- When a task involves installing or updating a debug build on a physical watch/device, prefer the user-level Android debug keystore under `%USERPROFILE%\\.android\\debug.keystore` so local builds remain compatible with Android Studio and CI debug installs. Do not switch to `.android-local` for those install/update flows unless the user explicitly wants an isolated signer and accepts a one-time uninstall.
 
 ## Build, test, and lint commands
 
@@ -36,6 +37,7 @@ Notes:
 - `gradlew` is the Gradle Wrapper shell script. It is committed to the repo so the project can run with the exact Gradle version pinned by the wrapper metadata instead of whatever Gradle happens to be installed globally.
 - On Linux or in Codex cloud containers, run `chmod +x ./gradlew` first if `./gradlew` fails with `Permission denied`.
 - In Codex cloud, if the wrapper download is blocked but an installed `gradle` binary is available at exactly version `9.3.1`, it is acceptable to use `gradle` instead of `./gradlew` for validation.
+- For install-compatible local debug builds, keep `GRADLE_USER_HOME` local if needed, but leave `ANDROID_USER_HOME` unset or point it at `%USERPROFILE%\\.android`. Setting `ANDROID_USER_HOME=.android-local` changes the debug keystore and will break in-place updates over Android Studio or CI-installed builds.
 
 Primary CI-equivalent command set:
 
@@ -75,6 +77,9 @@ Targeted commands:
 - Current tests and screenshot coverage should use preview or fake data and should not require a live API key.
 - Do not introduce workflows or changes that embed a real API key into downloadable CI artifacts unless the user explicitly asks for that tradeoff.
 - If a task truly requires live API access, stop and ask before proceeding.
+- For debug builds on a physical watch, prefer the debug-only ADB broadcast receiver over manual on-watch typing when setting a temporary API key override:
+  - `adb shell am broadcast -a com.example.routetracker.debug.SET_API_KEY -n com.example.routetracker/.debug.DebugApiKeyOverrideReceiver --es value "<key>"`
+  - `adb shell am broadcast -a com.example.routetracker.debug.CLEAR_API_KEY -n com.example.routetracker/.debug.DebugApiKeyOverrideReceiver`
 
 ## Wear-specific expectations
 

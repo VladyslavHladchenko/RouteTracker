@@ -466,10 +466,25 @@ Recommended local shell environment on this machine:
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 $env:GRADLE_USER_HOME = "$PWD\.gradle-local"
+```
+
+This keeps Gradle caches local without changing the debug signing key.
+
+If you want locally built debug APKs to update installs that came from Android Studio or GitHub Actions, do not point `ANDROID_USER_HOME` at `.android-local`. Leave it unset, or set it explicitly to the user-level Android home:
+
+```powershell
+$env:ANDROID_USER_HOME = "$env:USERPROFILE\.android"
+```
+
+That uses [`%USERPROFILE%\.android\debug.keystore`](/C:/Users/Hladc/.android/debug.keystore), which is also what Android Studio normally uses and what CI can be configured to use.
+
+Use `.android-local` only for isolated local troubleshooting:
+
+```powershell
 $env:ANDROID_USER_HOME = "$PWD\.android-local"
 ```
 
-These settings avoid the local permission issues seen under the default user-level Gradle and Android directories.
+That creates or uses a different debug keystore, so the resulting APKs will not update installs that were signed by Android Studio or CI until the app is uninstalled once.
 
 Unit tests:
 
@@ -499,6 +514,11 @@ adb -s <device-serial> shell am broadcast -a com.example.routetracker.debug.CLEA
 ```
 
 This receiver exists only in debug builds. `GOLEMIO_API_KEY` is still a build-time input, not a runtime environment variable on the watch.
+
+For Codex or local CLI workflows, the practical rule is:
+
+- when the goal is to install or update a debug build on a watch that may already have an Android Studio or CI build installed, use the user-level Android home / debug keystore
+- when the goal is isolated local troubleshooting and signer compatibility does not matter, `.android-local` is acceptable
 
 Compose UI test APK:
 

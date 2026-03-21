@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <receiver
+            android:name=".debug.DebugApiKeyOverrideReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.routetracker.debug.SET_API_KEY" />
+                <action android:name="com.example.routetracker.debug.CLEAR_API_KEY" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

@@ -77,7 +77,7 @@ jobs:
           adb shell input keyevent 82 || true
 
       - name: Run Wear Instrumented Tests
-        run: ./gradlew --no-daemon --stacktrace :wear:connectedDebugAndroidTest
+        run: ./gradlew --stacktrace :wear:connectedDebugAndroidTest
 
       - name: Stop Wear Emulator
         if: always()

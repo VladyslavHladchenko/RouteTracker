@@ -43,7 +43,6 @@ jobs:
       - name: Record Wear Screenshots
         run: >
           ./gradlew
-          --no-daemon
           --stacktrace
           :wear:testDebugUnitTest
           --tests

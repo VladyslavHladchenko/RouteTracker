@@ -529,7 +529,7 @@ Behavior tests:
 For normal feature work, the repo flow is:
 
 1. Implement the change.
-2. Run the smallest local command that proves it, for example `./gradlew :wear:assembleDebug` or one targeted test command from [docs/ci.md](docs/ci.md).
+2. Don not run build locally
 3. Commit and push your branch.
 4. If the branch already has a pull request, GitHub starts `Android CI` automatically on PR updates. If there is no PR yet, trigger the same workflow manually:
 

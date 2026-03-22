@@ -65,8 +65,9 @@ Targeted commands:
   - Codex web / Codex cloud sessions: this repo currently assumes no practical GitHub access from that environment, so prefer local cloud builds and tests there; keep them minimal and separate instead of using one large Gradle command
   - repo-specific signal: this project's Codex web environment sets `CODEX_CI`; if it is present, treat the session as Codex cloud for validation decisions
 - For normal feature work in local agent sessions, push the branch, open or update the pull request, and let `Android CI` validate Android-relevant changes. Do not default to a broad local Gradle run first.
+- Before merge, make sure all three GitHub workflows have passed for the PR head commit: automatic `Android CI`, plus manually triggered `Wear Screenshot Record` and `Wear UI Tests`.
 - Use `gh run list`, `gh run watch`, and `gh run view --log-failed` to inspect `Android CI` results when GitHub CLI is available.
-- When screenshots or emulator-backed validation are needed, dispatch `Wear Screenshot Record` or `Wear UI Tests` with `gh workflow run ...` and then monitor the resulting run with `gh run ...`.
+- Manually dispatch `Wear Screenshot Record` and `Wear UI Tests` with `gh workflow run ...` during PR validation, then monitor both with `gh run ...` so screenshot and emulator failures are caught before merge.
 - Trigger `Wear Screenshot Record` or `Wear UI Tests` manually only when the change actually needs screenshots or emulator-backed validation.
 - For docs-only, README-only, and other non-Android changes, `Android CI` is expected to succeed as a no-op.
 - If the Codex cloud environment cannot fully reproduce the Android toolchain or emulator setup, do not invent weaker substitutes. State clearly what was validated locally and what still depends on CI.

@@ -2,6 +2,8 @@
 
 This project uses GitHub Actions on GitHub-hosted runners. The setup is split into one default CI workflow for fast feedback and two manual workflows for heavier Wear OS tasks.
 
+Before merging a PR, all three workflows should have passed for the current head commit. `Android CI` runs automatically; `Wear Screenshot Record` and `Wear UI Tests` must be dispatched manually.
+
 ## Overview
 
 | Workflow | File | Trigger | Purpose |
@@ -148,6 +150,8 @@ CI adds a few more checks around them, especially `:mobile:assembleDebug`, `:wea
 ## Manual runs
 
 You can trigger the manual workflows from the GitHub Actions UI because both include `workflow_dispatch`.
+
+For merge readiness, trigger both manual workflows against the PR head branch even if `Android CI` is already green, so screenshot and emulator issues are caught before merge.
 
 You can also trigger them with the GitHub CLI:
 

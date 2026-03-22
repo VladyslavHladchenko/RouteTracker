@@ -105,9 +105,15 @@ class WearUiFlowTest {
             )
         }
 
-        composeRule.onNodeWithTag(UiTestTags.departurePlatform(departure.rowKey))
+        composeRule.onNodeWithTag(
+            UiTestTags.departurePlatform(departure.rowKey),
+            useUnmergedTree = true,
+        )
             .assertTextEquals("2")
-        composeRule.onNodeWithTag(UiTestTags.departureDelay(departure.rowKey))
+        composeRule.onNodeWithTag(
+            UiTestTags.departureDelay(departure.rowKey),
+            useUnmergedTree = true,
+        )
             .assertIsDisplayed()
             .assertTextEquals("+1m")
     }
@@ -143,9 +149,15 @@ class WearUiFlowTest {
             )
         }
 
-        composeRule.onNodeWithTag(UiTestTags.departurePlatform(departure.rowKey))
+        composeRule.onNodeWithTag(
+            UiTestTags.departurePlatform(departure.rowKey),
+            useUnmergedTree = true,
+        )
             .assertTextEquals("2")
-        composeRule.onNodeWithTag(UiTestTags.departureDelay(departure.rowKey))
+        composeRule.onNodeWithTag(
+            UiTestTags.departureDelay(departure.rowKey),
+            useUnmergedTree = true,
+        )
             .assertIsDisplayed()
             .assertTextEquals("+1m")
     }

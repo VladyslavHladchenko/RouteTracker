@@ -1,11 +1,38 @@
 package com.example.routetracker.data
 
+import java.time.Duration
 import java.time.Instant
 import kotlin.math.max
 
 const val COMPLICATION_STALE_AFTER_SECONDS = 30L
 private const val COMPLICATION_TIMELINE_HORIZON_SECONDS = 120L * 60L
-private const val STALE_STATUS_MARKER = "\u2022"
+private const val SECOND_STALE_AFTER_SECONDS = 60L
+private const val THIRD_STALE_AFTER_SECONDS = 120L
+
+private data class StaleStatusIndicator(
+    val title: String,
+    val contentDescriptionSuffix: String,
+)
+
+private val STALE_STATUS_LEVELS = listOf(
+    COMPLICATION_STALE_AFTER_SECONDS to StaleStatusIndicator(
+        title = "\u2022",
+        contentDescriptionSuffix = "Showing data older than 30 seconds.",
+    ),
+    SECOND_STALE_AFTER_SECONDS to StaleStatusIndicator(
+        title = "\u2022\u2022",
+        contentDescriptionSuffix = "Showing data older than 1 minute.",
+    ),
+    THIRD_STALE_AFTER_SECONDS to StaleStatusIndicator(
+        title = "\u2022\u2022\u2022",
+        contentDescriptionSuffix = "Showing data older than 2 minutes.",
+    ),
+)
+
+private val FALLBACK_STALE_STATUS = StaleStatusIndicator(
+    title = "\u2022\u2022\u2022",
+    contentDescriptionSuffix = "Showing stale fallback data.",
+)
 
 data class ComplicationDisplayState(
     val departureInstant: Instant?,
@@ -30,11 +57,13 @@ object ComplicationTimelinePlanner {
         snapshot: DepartureSnapshot,
         now: Instant,
     ): ComplicationTimelinePlan {
-        val staleAt = snapshot.fetchedAt.toInstant().plusSeconds(COMPLICATION_STALE_AFTER_SECONDS)
         val changePoints = buildSet {
             add(now)
-            if (staleAt.isAfter(now)) {
-                add(staleAt)
+            if (!snapshot.isStale) {
+                STALE_STATUS_LEVELS
+                    .map { (seconds, _) -> snapshot.fetchedAt.toInstant().plusSeconds(seconds) }
+                    .filter { it.isAfter(now) }
+                    .forEach(::add)
             }
             snapshot.departures
                 .map { it.departureTime.toInstant() }
@@ -57,7 +86,6 @@ object ComplicationTimelinePlanner {
             val state = stateAt(
                 snapshot = snapshot,
                 instant = start,
-                staleAt = staleAt,
             )
 
             if (defaultState == null) {
@@ -79,7 +107,7 @@ object ComplicationTimelinePlanner {
         }
 
         return ComplicationTimelinePlan(
-            defaultState = defaultState ?: stateAt(snapshot, now, staleAt),
+            defaultState = defaultState ?: stateAt(snapshot, now),
             futureWindows = windows,
         )
     }
@@ -87,24 +115,26 @@ object ComplicationTimelinePlanner {
     private fun stateAt(
         snapshot: DepartureSnapshot,
         instant: Instant,
-        staleAt: Instant,
     ): ComplicationDisplayState {
-        val isStale = snapshot.isStale || !instant.isBefore(staleAt)
+        val staleStatus = staleStatusAt(
+            snapshot = snapshot,
+            instant = instant,
+        )
         val departure = snapshot.departures.firstOrNull { it.departureTime.toInstant().isAfter(instant) }
-        val marker = if (isStale) STALE_STATUS_MARKER else null
 
         if (departure == null) {
             return ComplicationDisplayState(
                 departureInstant = null,
                 fallbackText = "--",
-                title = marker,
+                title = staleStatus?.title,
                 contentDescription = buildString {
                     append("No upcoming direct departures from ")
                     append(snapshot.selection.origin.stationName)
                     append(" to ")
                     append(snapshot.selection.destination.stationName)
-                    if (isStale) {
-                        append(". Showing data older than 30 seconds.")
+                    staleStatus?.let { status ->
+                        append(". ")
+                        append(status.contentDescriptionSuffix)
                     }
                 },
             )
@@ -113,7 +143,7 @@ object ComplicationTimelinePlanner {
         return ComplicationDisplayState(
             departureInstant = departure.departureTime.toInstant(),
             fallbackText = departure.countdownMinutesAt(instant).toString(),
-            title = marker,
+            title = staleStatus?.title,
             contentDescription = buildString {
                 append("Next direct departure from ")
                 append(snapshot.selection.origin.stationName)
@@ -121,11 +151,26 @@ object ComplicationTimelinePlanner {
                 append(snapshot.selection.destination.stationName)
                 append(" on line ")
                 append(departure.lineShortName)
-                if (isStale) {
-                    append(" Showing data older than 30 seconds.")
+                staleStatus?.let { status ->
+                    append(" ")
+                    append(status.contentDescriptionSuffix)
                 }
             },
         )
+    }
+
+    private fun staleStatusAt(
+        snapshot: DepartureSnapshot,
+        instant: Instant,
+    ): StaleStatusIndicator? {
+        if (snapshot.isStale) {
+            return FALLBACK_STALE_STATUS
+        }
+
+        val ageSeconds = Duration.between(snapshot.fetchedAt.toInstant(), instant).seconds.coerceAtLeast(0)
+        return STALE_STATUS_LEVELS
+            .lastOrNull { (seconds, _) -> ageSeconds >= seconds }
+            ?.second
     }
 
     private fun timelineHorizon(

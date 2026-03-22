@@ -4,13 +4,14 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ComplicationTimelinePlannerTest {
     private val pragueZone: ZoneId = ZoneId.of("Europe/Prague")
 
     @Test
-    fun `marks complication stale after 30 seconds`() {
+    fun `marks complication stale with one dot after 30 seconds`() {
         val now = pragueTime(hour = 12, minute = 0, second = 0)
         val snapshot = snapshot(
             fetchedAt = now,
@@ -25,6 +26,43 @@ class ComplicationTimelinePlannerTest {
         assertNull(plan.defaultState.title)
         val staleWindow = plan.futureWindows.first { it.start == now.toInstant().plusSeconds(COMPLICATION_STALE_AFTER_SECONDS) }
         assertEquals("\u2022", staleWindow.state.title)
+        assertTrue(staleWindow.state.contentDescription.contains("Showing data older than 30 seconds."))
+    }
+
+    @Test
+    fun `escalates complication to two dots after one minute`() {
+        val now = pragueTime(hour = 12, minute = 0, second = 0)
+        val snapshot = snapshot(
+            fetchedAt = now,
+            departures = listOf(departure(tripId = "trip-1", departureTime = now.plusMinutes(10))),
+        )
+
+        val plan = ComplicationTimelinePlanner.create(
+            snapshot = snapshot,
+            now = now.toInstant(),
+        )
+
+        val staleWindow = plan.futureWindows.first { it.start == now.toInstant().plusSeconds(60) }
+        assertEquals("\u2022\u2022", staleWindow.state.title)
+        assertTrue(staleWindow.state.contentDescription.contains("Showing data older than 1 minute."))
+    }
+
+    @Test
+    fun `escalates complication to three dots after two minutes`() {
+        val now = pragueTime(hour = 12, minute = 0, second = 0)
+        val snapshot = snapshot(
+            fetchedAt = now,
+            departures = listOf(departure(tripId = "trip-1", departureTime = now.plusMinutes(10))),
+        )
+
+        val plan = ComplicationTimelinePlanner.create(
+            snapshot = snapshot,
+            now = now.toInstant(),
+        )
+
+        val staleWindow = plan.futureWindows.first { it.start == now.toInstant().plusSeconds(120) }
+        assertEquals("\u2022\u2022\u2022", staleWindow.state.title)
+        assertTrue(staleWindow.state.contentDescription.contains("Showing data older than 2 minutes."))
     }
 
     @Test
@@ -70,7 +108,7 @@ class ComplicationTimelinePlannerTest {
     }
 
     @Test
-    fun `treats already stale snapshots as stale immediately`() {
+    fun `treats already stale snapshots as maximally stale immediately`() {
         val now = pragueTime(hour = 12, minute = 0, second = 0)
         val snapshot = snapshot(
             fetchedAt = now.minusMinutes(1),
@@ -83,7 +121,8 @@ class ComplicationTimelinePlannerTest {
             now = now.toInstant(),
         )
 
-        assertEquals("\u2022", plan.defaultState.title)
+        assertEquals("\u2022\u2022\u2022", plan.defaultState.title)
+        assertTrue(plan.defaultState.contentDescription.contains("Showing stale fallback data."))
     }
 
     private fun snapshot(

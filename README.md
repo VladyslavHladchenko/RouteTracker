@@ -406,7 +406,7 @@ Both are timeline-based:
 
 - countdown keeps moving locally between provider calls
 - future handoff points for later departures are preloaded
-- stale dot appears after `30 s` without fresh data
+- stale marker escalates after `30 s` without fresh data: `•`, then `••`, then `•••`
 
 Stale means:
 

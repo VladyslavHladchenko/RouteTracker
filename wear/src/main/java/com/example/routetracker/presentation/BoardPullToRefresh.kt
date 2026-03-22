@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 
+private const val BOARD_PULL_REFRESH_TRIGGER_FRACTION = 0.5f
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BoardPullToRefreshContainer(
@@ -38,9 +40,38 @@ internal fun BoardPullToRefreshContainer(
     val state = rememberPullToRefreshState()
     val haptic = LocalHapticFeedback.current
     var pullRefreshActive by remember { mutableStateOf(false) }
+    var pullRefreshArmed by remember { mutableStateOf(false) }
     var observedRefreshStart by remember { mutableStateOf(false) }
     var thresholdHapticPlayed by remember { mutableStateOf(false) }
-    val thresholdReached = !isRefreshing && state.distanceFraction >= 1f
+    val indicatorProgress = if (pullRefreshActive) {
+        1f
+    } else {
+        state.distanceFraction / BOARD_PULL_REFRESH_TRIGGER_FRACTION
+    }
+    val thresholdReached = !isRefreshing && indicatorProgress >= 1f
+
+    LaunchedEffect(state.distanceFraction, state.isAnimating, isRefreshing, pullRefreshActive) {
+        if (isRefreshing || pullRefreshActive) {
+            return@LaunchedEffect
+        }
+
+        if (state.distanceFraction >= BOARD_PULL_REFRESH_TRIGGER_FRACTION) {
+            pullRefreshArmed = true
+            return@LaunchedEffect
+        }
+
+        if (!state.isAnimating && state.distanceFraction == 0f) {
+            pullRefreshArmed = false
+        }
+    }
+
+    LaunchedEffect(pullRefreshArmed, state.isAnimating, isRefreshing, pullRefreshActive) {
+        if (pullRefreshArmed && state.isAnimating && !isRefreshing && !pullRefreshActive) {
+            pullRefreshActive = true
+            pullRefreshArmed = false
+            onRefresh()
+        }
+    }
 
     LaunchedEffect(isRefreshing, pullRefreshActive, observedRefreshStart) {
         if (pullRefreshActive && isRefreshing) {
@@ -48,6 +79,7 @@ internal fun BoardPullToRefreshContainer(
         } else if (pullRefreshActive && observedRefreshStart && !isRefreshing) {
             pullRefreshActive = false
             observedRefreshStart = false
+            pullRefreshArmed = false
         }
     }
 
@@ -62,19 +94,14 @@ internal fun BoardPullToRefreshContainer(
 
     PullToRefreshBox(
         isRefreshing = pullRefreshActive,
-        onRefresh = {
-            if (!isRefreshing && !pullRefreshActive) {
-                pullRefreshActive = true
-                onRefresh()
-            }
-        },
+        onRefresh = {},
         state = state,
         modifier = Modifier
             .fillMaxSize()
             .testTag(UiTestTags.BOARD_PULL_REFRESH_CONTAINER),
         indicator = {
             BoardPullRefreshIndicator(
-                progress = if (pullRefreshActive) 1f else state.distanceFraction,
+                progress = indicatorProgress,
                 isRefreshing = pullRefreshActive,
                 modifier = Modifier
                     .align(Alignment.TopCenter)

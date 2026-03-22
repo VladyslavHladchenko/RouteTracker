@@ -25,13 +25,15 @@
 - Keep `README.md` human-facing. Put agent-only workflow, validation, and execution policy in `AGENTS.md` or `docs/ci.md` instead of expanding `README.md` with Codex-specific instructions.
 - Prefer repo-tracked instructions over local-only setup. Do not depend on ignored local files such as `.codex/`, `.android-local/`, `.gradle-local/`, or `gradlew-local.ps1`.
 - Do not commit or push directly to protected `main`. Work on a short-lived task branch and deliver changes through a pull request.
+- In local desktop and local CLI Codex sessions, rely on GitHub Actions for validation by default. Do not run local Gradle, lint, unit, screenshot, or emulator validation unless the user explicitly asks for local execution or GitHub cannot answer a blocking question.
+- Keep an open pull request for active work. After the first meaningful change, push the branch and create or update the PR instead of accumulating local-only progress.
 - Never commit machine-specific files, caches, local properties, APK outputs, or generated local artifacts unless the task is specifically about committed screenshot baselines.
 - Never add or expose real API keys, tokens, signing files, or other secrets.
 - When a task involves installing or updating a debug build on a physical watch/device, prefer the user-level Android debug keystore under `%USERPROFILE%\\.android\\debug.keystore` so local builds remain compatible with Android Studio and CI debug installs. Do not switch to `.android-local` for those install/update flows unless the user explicitly wants an isolated signer and accepts a one-time uninstall.
 
 ## Build, lint, and test commands
 
-Prefer the smallest command that proves the change. For local validation, run build, lint, and test as separate Gradle invocations instead of a single all-in-one command unless the task explicitly asks for CI-parity reproduction.
+These commands are reference commands for CI parity, Codex cloud, and explicit user-requested local debugging. In local desktop and local CLI Codex sessions, do not default to running them; prefer GitHub Actions instead. When local execution is explicitly required, prefer the smallest command that proves the change and run build, lint, and test as separate Gradle invocations instead of a single all-in-one command unless the task explicitly asks for CI-parity reproduction.
 
 Notes:
 
@@ -60,17 +62,18 @@ Targeted commands:
 - The default workflow is `Android CI` in `.github/workflows/android-ci.yml`; it reports the required `Build And Test` check.
 - `Wear Screenshot Record` and `Wear UI Tests` both run automatically on pull requests, run again on `push` to `main` to refresh shared Gradle caches after merge, and can also be launched manually with `workflow_dispatch`.
 - Distinguish local vs Codex cloud environments before choosing where to validate:
-  - local desktop / local CLI sessions: prefer GitHub Actions for normal feature validation so the user's machine stays responsive; use local Gradle only for complex debugging, narrow fast feedback, device-specific work, or when GitHub cannot answer the question
+  - local desktop / local CLI sessions: always validate through GitHub Actions. Do not run local Gradle, lint, unit, screenshot, or emulator validation unless the user explicitly asks for local execution or GitHub cannot answer a blocking question.
   - Codex web / Codex cloud sessions: this repo currently assumes no practical GitHub access from that environment, so prefer local cloud builds and tests there; keep them minimal and separate instead of using one large Gradle command
   - repo-specific signal: this project's Codex web environment sets `CODEX_CI`; if it is present, treat the session as Codex cloud for validation decisions
-- For normal feature work in local agent sessions, push the branch, open or update the pull request, and let `Android CI` validate Android-relevant changes. Do not default to a broad local Gradle run first.
+- For normal feature work in local agent sessions, push the branch, open or update the pull request, and let GitHub Actions validate the work. Do not default to a local Gradle run first.
+- After each meaningful unit of work in a local agent session, commit, push, and watch the PR workflows for the new head commit instead of leaving CI running unchecked in the background.
 - Before merge, make sure all three GitHub workflows have passed for the PR head commit: `Android CI`, `Wear Screenshot Record`, and `Wear UI Tests`.
 - Use `gh run list`, `gh run watch`, and `gh run view --log-failed` to inspect `Android CI`, `Wear Screenshot Record`, and `Wear UI Tests` results when GitHub CLI is available.
 - If you need to rerun screenshot or emulator validation on the same branch head, manually dispatch `Wear Screenshot Record` or `Wear UI Tests` with `gh workflow run ...` and then monitor the runs with `gh run ...`.
 - For docs-only, README-only, and other non-Android changes, `Android CI` is expected to succeed as a no-op.
 - If the Codex cloud environment cannot fully reproduce the Android toolchain or emulator setup, do not invent weaker substitutes. State clearly what was validated locally and what still depends on CI.
 - If heavier Android or Roborazzi tasks start correctly but do not finish within the session budget, report that they were attempted, do not claim success, and rely on CI for the final result.
-- When UI changes affect snapshots, update screenshot baselines and make the visual change easy to inspect in the PR.
+- When UI changes affect snapshots, update screenshot baselines, wait for `Wear Screenshot Record` to pass for the PR head, then download the screenshot artifact and present the relevant images or report to the user.
 
 ## Secrets and live data
 
@@ -92,7 +95,10 @@ Targeted commands:
 
 - Branches should be short-lived and scoped to one task or issue.
 - Keep PRs scoped to one concern.
+- There should always be an open PR for active work. Do not leave a task branch without a PR once there is meaningful progress to review.
 - Summaries should state the user-visible change, validation performed, and any remaining limitation.
+- After each push, update the PR description so it matches the current behavior, validation, and remaining limitations.
+- After each meaningful unit of work, push the branch and watch CI for the new PR head.
 - If CI fails, investigate the reported failure rather than bypassing or weakening checks.
 - If work started from an issue or PR comment, keep follow-up work tied to that context and address review comments directly.
 
@@ -106,6 +112,8 @@ Targeted commands:
 
 - The requested behavior is implemented.
 - Relevant tests or screenshot baselines are updated when needed.
-- Appropriate GitHub Actions checks pass, or any remaining required CI is clearly identified.
+- The branch is pushed and there is an up-to-date pull request for the active work.
+- The latest PR head has green required GitHub Actions checks, or any remaining required CI is explicitly called out and accepted by the user.
+- If the work affects UI, the screenshot artifact has been downloaded after CI passed and the relevant screenshots have been presented to the user.
 - No local-only files or secrets are committed.
 - Any limitation, follow-up, or unrun validation is stated explicitly.

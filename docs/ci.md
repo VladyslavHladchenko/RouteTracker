@@ -1,6 +1,6 @@
 # CI and GitHub Workflows
 
-This project uses GitHub Actions on GitHub-hosted runners. The setup is split into one default CI workflow for fast feedback and two heavier Wear OS workflows that run automatically on pull requests and can also be launched manually.
+This project uses GitHub Actions on GitHub-hosted runners. The setup is split into one default CI workflow for fast feedback and two heavier Wear OS workflows that run automatically on pull requests, rerun on `main` after merge to refresh shared Gradle caches, and can also be launched manually.
 
 Before merging a PR, all three workflows should have passed for the current head commit: `Android CI`, `Wear Screenshot Record`, and `Wear UI Tests`.
 
@@ -9,8 +9,8 @@ Before merging a PR, all three workflows should have passed for the current head
 | Workflow | File | Trigger | Purpose |
 | --- | --- | --- | --- |
 | Android CI | `.github/workflows/android-ci.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Main build, lint, unit test, screenshot verification, artifact upload |
-| Wear Screenshot Record | `.github/workflows/wear-screenshot-record.yml` | `pull_request`, `workflow_dispatch` | Re-record Roborazzi screenshot baselines and upload generated images |
-| Wear UI Tests | `.github/workflows/wear-ui-tests.yml` | `pull_request`, `workflow_dispatch` | Boot a Wear emulator and run instrumented UI tests |
+| Wear Screenshot Record | `.github/workflows/wear-screenshot-record.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Re-record Roborazzi screenshot baselines and upload generated images |
+| Wear UI Tests | `.github/workflows/wear-ui-tests.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Boot a Wear emulator and run instrumented UI tests |
 
 ## Shared CI setup
 
@@ -37,7 +37,7 @@ The workflow always reports a `Build And Test` check so it can be used with bran
 
 Within that one job, build, lint, and JVM test work are split into separate GitHub Actions steps so failures are easier to identify without paying the setup cost of separate jobs.
 
-`Android CI`, `Wear Screenshot Record`, and `Wear UI Tests` all enable Gradle configuration cache and provide an encrypted cache key to `gradle/actions/setup-gradle`, so runs on `main` can populate reusable configuration-cache entries and later non-default-branch runs can restore them in read-only mode.
+`Android CI`, `Wear Screenshot Record`, and `Wear UI Tests` all enable Gradle configuration cache and provide an encrypted cache key to `gradle/actions/setup-gradle`, so runs on `main` can populate reusable configuration-cache entries and later non-default-branch runs can restore them in read-only mode. The two Wear workflows therefore rerun on `main` after merge to keep those heavier caches warm as well.
 
 It runs:
 
@@ -84,7 +84,7 @@ Changes outside that set, such as `docs/**`, `README.md`, and other repository m
 
 File: `.github/workflows/wear-screenshot-record.yml`
 
-This workflow now runs on pull requests so its `Record Screenshots` job can be required by repository rulesets. `workflow_dispatch` remains available when you want to rerun screenshot recording on demand.
+This workflow now runs on pull requests so its `Record Screenshots` job can be required by repository rulesets. It also runs on `push` to `main` so post-merge screenshot recording can refresh shared Gradle caches. `workflow_dispatch` remains available when you want to rerun screenshot recording on demand.
 
 It runs:
 
@@ -106,7 +106,7 @@ Use this workflow when:
 
 File: `.github/workflows/wear-ui-tests.yml`
 
-This workflow now runs on pull requests so its `Run Instrumented Tests` job can be required by repository rulesets. `workflow_dispatch` remains available when you want to rerun emulator validation on demand. It installs the Wear OS system image, creates an AVD, boots the emulator, waits for full boot, disables animations, and then runs instrumented tests.
+This workflow now runs on pull requests so its `Run Instrumented Tests` job can be required by repository rulesets. It also runs on `push` to `main` so post-merge emulator runs can refresh shared Gradle caches. `workflow_dispatch` remains available when you want to rerun emulator validation on demand. It installs the Wear OS system image, creates an AVD, boots the emulator, waits for full boot, disables animations, and then runs instrumented tests.
 
 It runs:
 
@@ -149,7 +149,7 @@ CI adds a few more checks around them, especially `:mobile:assembleDebug`, `:wea
 
 ## Manual runs
 
-You can trigger the Wear workflows from the GitHub Actions UI because both include `workflow_dispatch`, even though they also run automatically for pull requests.
+You can trigger the Wear workflows from the GitHub Actions UI because both include `workflow_dispatch`, even though they also run automatically for pull requests and on `main` after merge.
 
 For merge readiness, check that the pull-request-triggered runs for all three workflows have completed successfully on the current head commit. Use manual dispatch when you need an extra rerun on the same branch head.
 

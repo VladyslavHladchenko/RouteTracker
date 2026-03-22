@@ -22,40 +22,32 @@
 
 - Keep changes focused. Do not mix unrelated refactors into feature or bug-fix work.
 - Preserve existing UI and architecture patterns unless the task explicitly calls for redesign.
+- Keep `README.md` human-facing. Put agent-only workflow, validation, and execution policy in `AGENTS.md` or `docs/ci.md` instead of expanding `README.md` with Codex-specific instructions.
 - Prefer repo-tracked instructions over local-only setup. Do not depend on ignored local files such as `.codex/`, `.android-local/`, `.gradle-local/`, or `gradlew-local.ps1`.
-- Do not commit or push directly to protected `main`. Work on a task branch and deliver changes through a pull request.
+- Do not commit or push directly to protected `main`. Work on a short-lived task branch and deliver changes through a pull request.
 - Never commit machine-specific files, caches, local properties, APK outputs, or generated local artifacts unless the task is specifically about committed screenshot baselines.
 - Never add or expose real API keys, tokens, signing files, or other secrets.
 - When a task involves installing or updating a debug build on a physical watch/device, prefer the user-level Android debug keystore under `%USERPROFILE%\\.android\\debug.keystore` so local builds remain compatible with Android Studio and CI debug installs. Do not switch to `.android-local` for those install/update flows unless the user explicitly wants an isolated signer and accepts a one-time uninstall.
 
-## Build, test, and lint commands
+## Build, lint, and test commands
 
-Prefer the smallest command that proves the change, but use CI as the final source of truth for Android validation.
+Prefer the smallest command that proves the change. For local validation, run build, lint, and test as separate Gradle invocations instead of a single all-in-one command unless the task explicitly asks for CI-parity reproduction.
 
 Notes:
 
 - `gradlew` is the Gradle Wrapper shell script. It is committed to the repo so the project can run with the exact Gradle version pinned by the wrapper metadata instead of whatever Gradle happens to be installed globally.
 - On Linux or in Codex cloud containers, run `chmod +x ./gradlew` first if `./gradlew` fails with `Permission denied`.
 - In Codex cloud, if the wrapper download is blocked but an installed `gradle` binary is available at exactly version `9.3.1`, it is acceptable to use `gradle` instead of `./gradlew` for validation.
+- Reuse Gradle daemon and configuration cache for local builds. Do not add `--no-daemon`; `gradle.properties` already enables configuration cache with problems downgraded to warnings.
 - For install-compatible local debug builds, keep `GRADLE_USER_HOME` local if needed, but leave `ANDROID_USER_HOME` unset or point it at `%USERPROFILE%\\.android`. Setting `ANDROID_USER_HOME=.android-local` changes the debug keystore and will break in-place updates over Android Studio or CI-installed builds.
-- `gradle.properties` enables Gradle configuration cache by default with problems downgraded to warnings, so local CLI runs and IDE-delegated Gradle tasks reuse it unless explicitly overridden.
-
-Primary CI-equivalent command set:
-
-```bash
-./gradlew --stacktrace --continue \
-  :mobile:assembleDebug \
-  :wear:lintDebug \
-  :wear:assembleDebug \
-  :wear:assembleDebugAndroidTest \
-  :wear:testDebugUnitTest \
-  -Proborazzi.test.verify=true
-```
 
 Targeted commands:
 
 ```bash
+./gradlew --stacktrace :mobile:assembleDebug
 ./gradlew --stacktrace :wear:assembleDebug
+./gradlew --stacktrace :wear:lintDebug
+./gradlew --stacktrace :wear:testDebugUnitTest
 ./gradlew --stacktrace :wear:assembleDebugAndroidTest
 ./gradlew --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.verify=true
 ./gradlew --stacktrace :wear:testDebugUnitTest --tests com.example.routetracker.presentation.WearScreenshotTest -Proborazzi.test.record=true
@@ -64,14 +56,18 @@ Targeted commands:
 
 ## Validation strategy
 
-- For Codex web and GitHub-driven tasks, rely on GitHub Actions as the main validation path.
-- The default workflow is `Build And Test` in `.github/workflows/android-ci.yml`.
+- The default workflow is `Android CI` in `.github/workflows/android-ci.yml`; it reports the required `Build And Test` check.
 - Use `Wear Screenshot Record` when a UI change intentionally updates screenshot baselines.
 - Use `Wear UI Tests` only when emulator-backed validation is needed.
 - Distinguish local vs Codex cloud environments before choosing where to validate:
-  - local desktop / local CLI sessions: prefer GitHub Actions for broad build-and-test validation so the user's machine stays responsive; only run the smallest local command needed for fast feedback or device-specific work
-  - Codex web / Codex cloud sessions: use the cloud environment for targeted builds and tests when they are relevant, because they do not load the user's machine; still use GitHub Actions as the final source of truth for branch validation
+  - local desktop / local CLI sessions: prefer GitHub Actions for normal feature validation so the user's machine stays responsive; use local Gradle only for complex debugging, narrow fast feedback, device-specific work, or when GitHub cannot answer the question
+  - Codex web / Codex cloud sessions: this repo currently assumes no practical GitHub access from that environment, so prefer local cloud builds and tests there; keep them minimal and separate instead of using one large Gradle command
   - repo-specific signal: this project's Codex web environment sets `CODEX_CI`; if it is present, treat the session as Codex cloud for validation decisions
+- For normal feature work in local agent sessions, push the branch, open or update the pull request, and let `Android CI` validate Android-relevant changes. Do not default to a broad local Gradle run first.
+- Use `gh run list`, `gh run watch`, and `gh run view --log-failed` to inspect `Android CI` results when GitHub CLI is available.
+- When screenshots or emulator-backed validation are needed, dispatch `Wear Screenshot Record` or `Wear UI Tests` with `gh workflow run ...` and then monitor the resulting run with `gh run ...`.
+- Trigger `Wear Screenshot Record` or `Wear UI Tests` manually only when the change actually needs screenshots or emulator-backed validation.
+- For docs-only, README-only, and other non-Android changes, `Android CI` is expected to succeed as a no-op.
 - If the Codex cloud environment cannot fully reproduce the Android toolchain or emulator setup, do not invent weaker substitutes. State clearly what was validated locally and what still depends on CI.
 - If heavier Android or Roborazzi tasks start correctly but do not finish within the session budget, report that they were attempted, do not claim success, and rely on CI for the final result.
 - When UI changes affect snapshots, update screenshot baselines and make the visual change easy to inspect in the PR.

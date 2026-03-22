@@ -497,7 +497,6 @@ Golemio API key:
 - local Android Studio / local device builds: set `golemioApiKey=...` in `~/.gradle/gradle.properties`
 - local shell builds: either use the same Gradle property or set `GOLEMIO_API_KEY` in the environment before building
 - GitHub Actions: store `GOLEMIO_API_KEY` as a workflow secret and expose it to the Gradle step
-- Codex cloud: set `GOLEMIO_API_KEY` in the environment or write `golemioApiKey` into `~/.gradle/gradle.properties` during the setup script
 
 At runtime on the watch, the app now resolves the key in this order:
 
@@ -514,11 +513,6 @@ adb -s <device-serial> shell am broadcast -a com.example.routetracker.debug.CLEA
 ```
 
 This receiver exists only in debug builds. `GOLEMIO_API_KEY` is still a build-time input, not a runtime environment variable on the watch.
-
-For Codex or local CLI workflows, the practical rule is:
-
-- when the goal is to install or update a debug build on a watch that may already have an Android Studio or CI build installed, use the user-level Android home / debug keystore
-- when the goal is isolated local troubleshooting and signer compatibility does not matter, `.android-local` is acceptable
 
 Compose UI test APK:
 
@@ -559,42 +553,11 @@ Behavior tests:
   - favorite long-press menu
   - trip-details close action
 
-## Feature Branch Workflow
+## CI Workflows
 
-For normal feature work, the repo flow is:
+For workflow names, triggers, artifact outputs, and manual dispatch details, see [`docs/ci.md`](docs/ci.md).
 
-1. Implement the change.
-2. Don not run build locally
-3. Commit and push your branch.
-4. If the branch already has a pull request, GitHub starts `Android CI` automatically on PR updates. If there is no PR yet, trigger the same workflow manually:
-
-```powershell
-gh workflow run "Android CI" --ref <your-branch>
-```
-
-5. Find the run ID and watch it from the terminal:
-
-```powershell
-gh run list --branch <your-branch> --workflow "Android CI" --limit 5
-gh run watch <run-id> --compact --interval 5
-```
-
-6. If a run fails, inspect the failure logs directly:
-
-```powershell
-gh run view <run-id> --log-failed
-```
-
-7. Trigger the heavier manual workflows only when the change needs them:
-
-```powershell
-gh workflow run "Wear Screenshot Record" --ref <your-branch>
-gh workflow run "Wear UI Tests" --ref <your-branch>
-```
-
-8. After dispatching those workflows, use `gh run list` and `gh run watch` the same way to follow them to completion.
-
-`gh workflow run` starts a workflow, while `gh run` is what you use to list, watch, inspect, and rerun the resulting runs. For docs-only or README-only changes, `Android CI` still reports success, but it exits early as a no-op by design.
+Normal contributor flow is to push a branch, open or update a pull request, and let `Android CI` validate Android-relevant changes automatically.
 
 ## Known Environment Quirk
 

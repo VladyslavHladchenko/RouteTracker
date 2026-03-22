@@ -39,6 +39,7 @@ Notes:
 - On Linux or in Codex cloud containers, run `chmod +x ./gradlew` first if `./gradlew` fails with `Permission denied`.
 - In Codex cloud, if the wrapper download is blocked but an installed `gradle` binary is available at exactly version `9.3.1`, it is acceptable to use `gradle` instead of `./gradlew` for validation.
 - Reuse Gradle daemon and configuration cache for local builds. Do not add `--no-daemon`; `gradle.properties` already enables configuration cache with problems downgraded to warnings.
+- On local Windows sessions, if `java`, `javap`, `jar`, or similar JDK tools are not configured globally, use Android Studio's bundled JBR from `%ProgramFiles%\\Android\\Android Studio\\jbr\\bin\\` instead of assuming a separate system JDK install.
 - For install-compatible local debug builds, keep `GRADLE_USER_HOME` local if needed, but leave `ANDROID_USER_HOME` unset or point it at `%USERPROFILE%\\.android`. Setting `ANDROID_USER_HOME=.android-local` changes the debug keystore and will break in-place updates over Android Studio or CI-installed builds.
 
 Targeted commands:

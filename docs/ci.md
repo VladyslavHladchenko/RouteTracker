@@ -1,16 +1,16 @@
 # CI and GitHub Workflows
 
-This project uses GitHub Actions on GitHub-hosted runners. The setup is split into one default CI workflow for fast feedback and two manual workflows for heavier Wear OS tasks.
+This project uses GitHub Actions on GitHub-hosted runners. The setup is split into one default CI workflow for fast feedback and two heavier Wear OS workflows that run automatically on pull requests and can also be launched manually.
 
-Before merging a PR, all three workflows should have passed for the current head commit. `Android CI` runs automatically; `Wear Screenshot Record` and `Wear UI Tests` must be dispatched manually.
+Before merging a PR, all three workflows should have passed for the current head commit: `Android CI`, `Wear Screenshot Record`, and `Wear UI Tests`.
 
 ## Overview
 
 | Workflow | File | Trigger | Purpose |
 | --- | --- | --- | --- |
 | Android CI | `.github/workflows/android-ci.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Main build, lint, unit test, screenshot verification, artifact upload |
-| Wear Screenshot Record | `.github/workflows/wear-screenshot-record.yml` | `workflow_dispatch` | Re-record Roborazzi screenshot baselines and upload generated images |
-| Wear UI Tests | `.github/workflows/wear-ui-tests.yml` | `workflow_dispatch` | Boot a Wear emulator and run instrumented UI tests |
+| Wear Screenshot Record | `.github/workflows/wear-screenshot-record.yml` | `pull_request`, `workflow_dispatch` | Re-record Roborazzi screenshot baselines and upload generated images |
+| Wear UI Tests | `.github/workflows/wear-ui-tests.yml` | `pull_request`, `workflow_dispatch` | Boot a Wear emulator and run instrumented UI tests |
 
 ## Shared CI setup
 
@@ -84,7 +84,7 @@ Changes outside that set, such as `docs/**`, `README.md`, and other repository m
 
 File: `.github/workflows/wear-screenshot-record.yml`
 
-This workflow is intentionally manual because it updates screenshot outputs and is not something we want on every pull request.
+This workflow now runs on pull requests so its `Record Screenshots` job can be required by repository rulesets. `workflow_dispatch` remains available when you want to rerun screenshot recording on demand.
 
 It runs:
 
@@ -106,7 +106,7 @@ Use this workflow when:
 
 File: `.github/workflows/wear-ui-tests.yml`
 
-This workflow is also manual because emulator startup is slower and more failure-prone than normal JVM-based CI. It installs the Wear OS system image, creates an AVD, boots the emulator, waits for full boot, disables animations, and then runs instrumented tests.
+This workflow now runs on pull requests so its `Run Instrumented Tests` job can be required by repository rulesets. `workflow_dispatch` remains available when you want to rerun emulator validation on demand. It installs the Wear OS system image, creates an AVD, boots the emulator, waits for full boot, disables animations, and then runs instrumented tests.
 
 It runs:
 
@@ -145,13 +145,13 @@ The current workflows are based on the same commands that were already useful lo
 - `:wear:testDebugUnitTest -Proborazzi.test.verify=true`
 - `:wear:testDebugUnitTest -Proborazzi.test.record=true`
 
-CI adds a few more checks around them, especially `:mobile:assembleDebug`, `:wear:lintDebug`, artifact upload, and the manual emulator run for `:wear:connectedDebugAndroidTest`.
+CI adds a few more checks around them, especially `:mobile:assembleDebug`, `:wear:lintDebug`, artifact upload, and the emulator-backed run for `:wear:connectedDebugAndroidTest`.
 
 ## Manual runs
 
-You can trigger the manual workflows from the GitHub Actions UI because both include `workflow_dispatch`.
+You can trigger the Wear workflows from the GitHub Actions UI because both include `workflow_dispatch`, even though they also run automatically for pull requests.
 
-For merge readiness, trigger both manual workflows against the PR head branch even if `Android CI` is already green, so screenshot and emulator issues are caught before merge.
+For merge readiness, check that the pull-request-triggered runs for all three workflows have completed successfully on the current head commit. Use manual dispatch when you need an extra rerun on the same branch head.
 
 You can also trigger them with the GitHub CLI:
 
@@ -164,15 +164,11 @@ To use `gh workflow run`, the token used by `gh` needs repository `Actions` perm
 
 ## Current caveats
 
-As of March 20, 2026:
+As of March 22, 2026:
 
 - `Android CI` is passing.
-- `Wear Screenshot Record` is working and uploads screenshot artifacts.
-- `Wear UI Tests` now boots the emulator and reaches `:wear:connectedDebugAndroidTest`, so the remaining failures are real test/app failures rather than workflow setup failures.
-
-At the moment, the failing instrumented tests are in:
-
-- `wear/src/androidTest/java/com/example/routetracker/presentation/WearUiFlowTest.kt`
+- `Wear Screenshot Record` is passing and uploads screenshot artifacts.
+- `Wear UI Tests` is passing and uploads emulator logs and test reports.
 
 There is also still a GitHub warning around `android-actions/setup-android@v3` being a Node 20 action. The workflows currently set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`, but the warning is still worth tracking.
 

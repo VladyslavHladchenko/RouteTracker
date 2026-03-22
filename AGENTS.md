@@ -58,7 +58,7 @@ Targeted commands:
 ## Validation strategy
 
 - The default workflow is `Android CI` in `.github/workflows/android-ci.yml`; it reports the required `Build And Test` check.
-- `Wear Screenshot Record` and `Wear UI Tests` both run automatically on pull requests and can also be launched manually with `workflow_dispatch`.
+- `Wear Screenshot Record` and `Wear UI Tests` both run automatically on pull requests, run again on `push` to `main` to refresh shared Gradle caches after merge, and can also be launched manually with `workflow_dispatch`.
 - Distinguish local vs Codex cloud environments before choosing where to validate:
   - local desktop / local CLI sessions: prefer GitHub Actions for normal feature validation so the user's machine stays responsive; use local Gradle only for complex debugging, narrow fast feedback, device-specific work, or when GitHub cannot answer the question
   - Codex web / Codex cloud sessions: this repo currently assumes no practical GitHub access from that environment, so prefer local cloud builds and tests there; keep them minimal and separate instead of using one large Gradle command

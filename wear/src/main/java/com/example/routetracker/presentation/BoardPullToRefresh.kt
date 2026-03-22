@@ -15,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +28,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
+import kotlinx.coroutines.launch
 
 private const val BOARD_PULL_REFRESH_TRIGGER_FRACTION = 0.5f
 
@@ -37,10 +39,12 @@ internal fun BoardPullToRefreshContainer(
     onRefresh: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val coroutineScope = rememberCoroutineScope()
     val state = rememberPullToRefreshState()
     val haptic = LocalHapticFeedback.current
     var pullRefreshActive by remember { mutableStateOf(false) }
     var pullRefreshArmed by remember { mutableStateOf(false) }
+    var pullRefreshResetPending by remember { mutableStateOf(false) }
     var observedRefreshStart by remember { mutableStateOf(false) }
     var thresholdHapticPlayed by remember { mutableStateOf(false) }
     val indicatorProgress = if (pullRefreshActive) {
@@ -50,8 +54,14 @@ internal fun BoardPullToRefreshContainer(
     }
     val thresholdReached = !isRefreshing && indicatorProgress >= 1f
 
-    LaunchedEffect(state.distanceFraction, state.isAnimating, isRefreshing, pullRefreshActive) {
-        if (isRefreshing || pullRefreshActive) {
+    LaunchedEffect(
+        state.distanceFraction,
+        state.isAnimating,
+        isRefreshing,
+        pullRefreshActive,
+        pullRefreshResetPending,
+    ) {
+        if (isRefreshing || pullRefreshActive || pullRefreshResetPending) {
             return@LaunchedEffect
         }
 
@@ -69,17 +79,24 @@ internal fun BoardPullToRefreshContainer(
         if (pullRefreshArmed && state.isAnimating && !isRefreshing && !pullRefreshActive) {
             pullRefreshActive = true
             pullRefreshArmed = false
+            pullRefreshResetPending = true
+            coroutineScope.launch {
+                state.animateToThreshold()
+            }
             onRefresh()
         }
     }
 
-    LaunchedEffect(isRefreshing, pullRefreshActive, observedRefreshStart) {
+    LaunchedEffect(isRefreshing, pullRefreshActive, observedRefreshStart, pullRefreshResetPending) {
         if (pullRefreshActive && isRefreshing) {
             observedRefreshStart = true
         } else if (pullRefreshActive && observedRefreshStart && !isRefreshing) {
             pullRefreshActive = false
             observedRefreshStart = false
             pullRefreshArmed = false
+            thresholdHapticPlayed = false
+            state.animateToHidden()
+            pullRefreshResetPending = false
         }
     }
 

@@ -31,9 +31,11 @@ import androidx.wear.compose.material3.MaterialTheme
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
-internal fun BoardPullToRefreshContainer(
+internal fun PullToRefreshContainer(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
+    containerTag: String,
+    indicatorTag: String,
     content: @Composable () -> Unit,
 ) {
     val refreshThreshold = PullRefreshDefaults.RefreshThreshold / 2
@@ -55,6 +57,7 @@ internal fun BoardPullToRefreshContainer(
     val haptic = LocalHapticFeedback.current
     var thresholdHapticPlayed by remember { mutableStateOf(false) }
     val indicatorProgress = if (pullRefreshActive) 1f else state.progress
+    val showIndicator = pullRefreshActive || state.progress > 0f
     val thresholdReached = !pullRefreshActive && indicatorProgress >= 1f
 
     LaunchedEffect(isRefreshing, pullRefreshActive, observedRefreshStart) {
@@ -83,30 +86,32 @@ internal fun BoardPullToRefreshContainer(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .testTag(UiTestTags.BOARD_PULL_REFRESH_CONTAINER)
+            .testTag(containerTag)
             .pullRefresh(state),
     ) {
         content()
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .pullRefreshIndicatorTransform(
-                    state = state,
-                    scale = false,
+        if (showIndicator) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .pullRefreshIndicatorTransform(
+                        state = state,
+                        scale = false,
+                    )
+                    .padding(top = 18.dp)
+                    .testTag(indicatorTag),
+            ) {
+                PullRefreshIndicator(
+                    progress = indicatorProgress,
+                    isRefreshing = pullRefreshActive,
                 )
-                .padding(top = 18.dp)
-                .testTag(UiTestTags.BOARD_PULL_REFRESH_INDICATOR),
-        ) {
-            BoardPullRefreshIndicator(
-                progress = indicatorProgress,
-                isRefreshing = pullRefreshActive,
-            )
+            }
         }
     }
 }
 
 @Composable
-internal fun BoardPullRefreshIndicator(
+internal fun PullRefreshIndicator(
     progress: Float,
     isRefreshing: Boolean,
     modifier: Modifier = Modifier,

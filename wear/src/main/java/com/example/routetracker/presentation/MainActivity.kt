@@ -690,6 +690,12 @@ fun WearApp(routeRepo: RouteRepository) {
                             routeRepo = routeRepo,
                             currentSystemTime = currentSystemTimeForDetails,
                             showSecondsEnabled = showSecondsForDetails,
+                            isRefreshing = latestIsRefreshing.value,
+                            onRefresh = {
+                                coroutineScope.launch {
+                                    loadSnapshot(forceRefresh = true, requestSurfaceRefresh = true)
+                                }
+                            },
                             onDismiss = {
                                 dismissTripDetails()
                             },
@@ -741,9 +747,11 @@ internal fun BoardScreen(
         else -> "No direct departures right now."
     }
 
-    BoardPullToRefreshContainer(
+    PullToRefreshContainer(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
+        containerTag = UiTestTags.BOARD_PULL_REFRESH_CONTAINER,
+        indicatorTag = UiTestTags.BOARD_PULL_REFRESH_INDICATOR,
     ) {
         Box(
             modifier = Modifier
@@ -787,21 +795,6 @@ internal fun BoardScreen(
                     }
                 }
 
-                item {
-                    Button(
-                        onClick = onRefresh,
-                        modifier = Modifier
-                            .testTag(UiTestTags.BOARD_REFRESH_BUTTON)
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                        ),
-                    ) {
-                        Text(if (isRefreshing) "Refreshing..." else "Refresh")
-                    }
-                }
                 item {
                     AutoUpdatesCard(
                         autoUpdatesEnabled = autoUpdatesEnabled,
@@ -1459,134 +1452,143 @@ internal fun DepartureDetailsScreen(
     routeRepo: RouteRepository,
     currentSystemTime: ZonedDateTime,
     showSecondsEnabled: Boolean,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
 
-    RoundScalingPage(state = listState) {
-        item {
-            Text(
-                text = departure.clockLabel(
-                    showSeconds = showSecondsEnabled,
-                    includeLine = !selection.usesFixedLine(),
-                ),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        item {
-            Text(
-                text = departure.activityStatusLabel(
-                    referenceNow = currentSystemTime,
-                    showSeconds = showSecondsEnabled,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 2.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        item {
-            DetailValueRow(
-                label = "Line",
-                value = departure.lineLabel,
-            )
-        }
-        item {
-            DetailValueRow(
-                label = "Boarding platform",
-                value = departure.boardingPlatformCompactLabel ?: "--",
-                valueColor = BOARDING_PLATFORM_COLOR,
-            )
-        }
-        item {
-            DetailValueRow(
-                label = "Destination arrival",
-                value = routeRepo.formatDetailTime(departure.destinationArrivalTime),
-            )
-        }
-        item {
-            DetailSectionTitle(
-                title = "Departure board",
-                topPadding = 12.dp,
-            )
-        }
-        item {
-            DetailValueRow(
-                label = "Departure scheduled",
-                value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.scheduledTime),
-            )
-        }
-        item {
-            DetailValueRow(
-                label = "Departure predicted",
-                value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.predictedTime),
-            )
-        }
-        item {
-            DetailValueRow(
-                label = "Delay",
-                value = routeRepo.formatDelaySeconds(departure.departureBoardDetails.delaySeconds),
-            )
-        }
-        item {
-            DetailValueRow(
-                label = "Origin arrival scheduled",
-                value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.scheduledTime),
-            )
-        }
-        item {
-            DetailValueRow(
-                label = "Origin arrival predicted",
-                value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.predictedTime),
-            )
-        }
-        item {
-            DetailSectionTitle(
-                title = "Vehicle positions",
-                topPadding = 12.dp,
-            )
-        }
-        item {
-            departure.vehiclePositionDetails?.let { vehicleDetails ->
-                DetailValueRow(
-                    label = "Delay",
-                    value = routeRepo.formatDelaySeconds(vehicleDetails.delaySeconds),
-                )
-            } ?: DetailValueRow(
-                label = "Status",
-                value = "Not available",
-            )
-        }
-        if (departure.vehiclePositionDetails != null) {
+    PullToRefreshContainer(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        containerTag = UiTestTags.TRIP_DETAILS_PULL_REFRESH_CONTAINER,
+        indicatorTag = UiTestTags.TRIP_DETAILS_PULL_REFRESH_INDICATOR,
+    ) {
+        RoundScalingPage(state = listState) {
             item {
-                DetailValueRow(
-                    label = "origin_timestamp",
-                    value = routeRepo.formatDetailTime(departure.vehiclePositionDetails.originTimestamp),
+                Text(
+                    text = departure.clockLabel(
+                        showSeconds = showSecondsEnabled,
+                        includeLine = !selection.usesFixedLine(),
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp),
+                    textAlign = TextAlign.Center,
                 )
             }
-        }
-        item {
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .testTag(UiTestTags.TRIP_DETAILS_CLOSE_BUTTON)
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 12.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-            ) {
-                Text("Close")
+            item {
+                Text(
+                    text = departure.activityStatusLabel(
+                        referenceNow = currentSystemTime,
+                        showSeconds = showSecondsEnabled,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
+                        .padding(top = 2.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
+            item {
+                DetailValueRow(
+                    label = "Line",
+                    value = departure.lineLabel,
+                )
+            }
+            item {
+                DetailValueRow(
+                    label = "Boarding platform",
+                    value = departure.boardingPlatformCompactLabel ?: "--",
+                    valueColor = BOARDING_PLATFORM_COLOR,
+                )
+            }
+            item {
+                DetailValueRow(
+                    label = "Destination arrival",
+                    value = routeRepo.formatDetailTime(departure.destinationArrivalTime),
+                )
+            }
+            item {
+                DetailSectionTitle(
+                    title = "Departure board",
+                    topPadding = 12.dp,
+                )
+            }
+            item {
+                DetailValueRow(
+                    label = "Departure scheduled",
+                    value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.scheduledTime),
+                )
+            }
+            item {
+                DetailValueRow(
+                    label = "Departure predicted",
+                    value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.predictedTime),
+                )
+            }
+            item {
+                DetailValueRow(
+                    label = "Delay",
+                    value = routeRepo.formatDelaySeconds(departure.departureBoardDetails.delaySeconds),
+                )
+            }
+            item {
+                DetailValueRow(
+                    label = "Origin arrival scheduled",
+                    value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.scheduledTime),
+                )
+            }
+            item {
+                DetailValueRow(
+                    label = "Origin arrival predicted",
+                    value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.predictedTime),
+                )
+            }
+            item {
+                DetailSectionTitle(
+                    title = "Vehicle positions",
+                    topPadding = 12.dp,
+                )
+            }
+            item {
+                departure.vehiclePositionDetails?.let { vehicleDetails ->
+                    DetailValueRow(
+                        label = "Delay",
+                        value = routeRepo.formatDelaySeconds(vehicleDetails.delaySeconds),
+                    )
+                } ?: DetailValueRow(
+                    label = "Status",
+                    value = "Not available",
+                )
+            }
+            if (departure.vehiclePositionDetails != null) {
+                item {
+                    DetailValueRow(
+                        label = "origin_timestamp",
+                        value = routeRepo.formatDetailTime(departure.vehiclePositionDetails.originTimestamp),
+                    )
+                }
+            }
+            item {
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .testTag(UiTestTags.TRIP_DETAILS_CLOSE_BUTTON)
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
+                        .padding(top = 12.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                ) {
+                    Text("Close")
+                }
             }
         }
     }

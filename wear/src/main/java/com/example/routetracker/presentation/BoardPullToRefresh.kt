@@ -38,16 +38,38 @@ internal fun BoardPullToRefreshContainer(
 ) {
     val refreshThreshold = PullRefreshDefaults.RefreshThreshold / 2
     val refreshingOffset = PullRefreshDefaults.RefreshingOffset / 2
+    var pullRefreshActive by remember { mutableStateOf(false) }
+    var observedRefreshStart by remember { mutableStateOf(false) }
     val state = rememberPullRefreshState(
-        refreshing = isRefreshing,
-        onRefresh = onRefresh,
+        refreshing = pullRefreshActive,
+        onRefresh = {
+            if (!pullRefreshActive) {
+                pullRefreshActive = true
+                observedRefreshStart = false
+                onRefresh()
+            }
+        },
         refreshThreshold = refreshThreshold,
         refreshingOffset = refreshingOffset,
     )
     val haptic = LocalHapticFeedback.current
     var thresholdHapticPlayed by remember { mutableStateOf(false) }
-    val indicatorProgress = if (isRefreshing) 1f else state.progress
-    val thresholdReached = !isRefreshing && indicatorProgress >= 1f
+    val indicatorProgress = if (pullRefreshActive) 1f else state.progress
+    val thresholdReached = !pullRefreshActive && indicatorProgress >= 1f
+
+    LaunchedEffect(isRefreshing, pullRefreshActive, observedRefreshStart) {
+        if (!pullRefreshActive) {
+            return@LaunchedEffect
+        }
+
+        if (isRefreshing) {
+            observedRefreshStart = true
+        } else if (observedRefreshStart) {
+            pullRefreshActive = false
+            observedRefreshStart = false
+            thresholdHapticPlayed = false
+        }
+    }
 
     LaunchedEffect(thresholdReached) {
         if (thresholdReached && !thresholdHapticPlayed) {
@@ -77,7 +99,7 @@ internal fun BoardPullToRefreshContainer(
         ) {
             BoardPullRefreshIndicator(
                 progress = indicatorProgress,
-                isRefreshing = isRefreshing,
+                isRefreshing = pullRefreshActive,
             )
         }
     }

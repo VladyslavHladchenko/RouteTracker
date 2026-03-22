@@ -94,6 +94,7 @@ android {
 dependencies {
     implementation(libs.play.services.wearable)
     implementation(platform(libs.androidx.compose.bom))
+    implementation("androidx.compose.material:material")
     implementation("androidx.compose.material3:material3")
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)

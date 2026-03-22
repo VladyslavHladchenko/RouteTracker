@@ -239,6 +239,8 @@ class WearScreenshotTest {
                 routeRepo = routeRepo,
                 currentSystemTime = snapshot.fetchedAt,
                 showSecondsEnabled = false,
+                isRefreshing = false,
+                onRefresh = {},
                 onDismiss = {},
             )
         }

@@ -276,6 +276,8 @@ class WearUiFlowTest {
                 routeRepo = routeRepo,
                 currentSystemTime = ZonedDateTime.now(),
                 showSecondsEnabled = false,
+                isRefreshing = false,
+                onRefresh = {},
                 onDismiss = { dismissed = true },
             )
         }

@@ -3,7 +3,9 @@ package com.example.routetracker.presentation
 import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -27,7 +29,7 @@ class BoardPullToRefreshTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun swipeDownAtTopTriggersRefresh_andRefreshButtonRemainsAvailable() {
+    fun boardSwipeDownAtTopTriggersRefresh() {
         val selection = sampleAnyPlatformSelection()
         val snapshot = RouteRepository.previewSnapshot(selection)
         val routeRepo = RouteRepository(composeRule.activity)
@@ -55,7 +57,6 @@ class BoardPullToRefreshTest {
             }
         }
 
-        composeRule.onNodeWithTag(UiTestTags.BOARD_REFRESH_BUTTON).assertExists()
         composeRule.onNodeWithTag(UiTestTags.BOARD_PULL_REFRESH_CONTAINER).performTouchInput {
             swipe(
                 start = Offset(x = center.x, y = height * 0.16f),
@@ -64,6 +65,64 @@ class BoardPullToRefreshTest {
             )
         }
         composeRule.waitUntil(timeoutMillis = 3_000) { refreshed }
+    }
+
+    @Test
+    fun tripDetailsSwipeDownAtTopTriggersRefresh() {
+        val selection = sampleAnyPlatformSelection()
+        val snapshot = RouteRepository.previewSnapshot(selection)
+        val routeRepo = RouteRepository(composeRule.activity)
+        val departure = snapshot.departures.first()
+        var refreshed = false
+
+        composeRule.setContent {
+            RouteTrackerTheme {
+                DepartureDetailsScreen(
+                    selection = selection,
+                    departure = departure,
+                    routeRepo = routeRepo,
+                    currentSystemTime = snapshot.fetchedAt,
+                    showSecondsEnabled = false,
+                    isRefreshing = false,
+                    onRefresh = { refreshed = true },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(UiTestTags.TRIP_DETAILS_PULL_REFRESH_CONTAINER).performTouchInput {
+            swipe(
+                start = Offset(x = center.x, y = height * 0.16f),
+                end = Offset(x = center.x, y = height * 0.84f),
+                durationMillis = 500,
+            )
+        }
+        composeRule.waitUntil(timeoutMillis = 3_000) { refreshed }
+    }
+
+    @Test
+    fun tripDetailsBackgroundRefreshDoesNotShowPullIndicator() {
+        val selection = sampleAnyPlatformSelection()
+        val snapshot = RouteRepository.previewSnapshot(selection)
+        val routeRepo = RouteRepository(composeRule.activity)
+        val departure = snapshot.departures.first()
+
+        composeRule.setContent {
+            RouteTrackerTheme {
+                DepartureDetailsScreen(
+                    selection = selection,
+                    departure = departure,
+                    routeRepo = routeRepo,
+                    currentSystemTime = snapshot.fetchedAt,
+                    showSecondsEnabled = false,
+                    isRefreshing = true,
+                    onRefresh = {},
+                    onDismiss = {},
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithTag(UiTestTags.TRIP_DETAILS_PULL_REFRESH_INDICATOR).assertCountEquals(0)
     }
 
     private fun sampleAnyPlatformSelection(): RouteSelection {

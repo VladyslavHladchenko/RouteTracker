@@ -741,79 +741,84 @@ internal fun BoardScreen(
         else -> "No direct departures right now."
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+    BoardPullToRefreshContainer(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
     ) {
-        ScalingLazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            state = listState,
-            autoCentering = null,
-            contentPadding = PaddingValues(top = 20.dp, bottom = 24.dp),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
         ) {
-            item {
-                HeaderCard(
-                    selection = selection,
-                    statusText = statusText,
-                    onOpenQuickRouteSwitch = onOpenQuickRouteSwitch,
-                    onOpenRouteSetup = onOpenRouteSetup,
-                )
-            }
-
-            if (departures.isNotEmpty()) {
-                items(
-                    items = departures,
-                    key = { departure -> departure.rowKey },
-                ) { departure ->
-                    DepartureRow(
+            ScalingLazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                autoCentering = null,
+                contentPadding = PaddingValues(top = 20.dp, bottom = 24.dp),
+            ) {
+                item {
+                    HeaderCard(
                         selection = selection,
-                        departure = departure,
-                        routeRepo = routeRepo,
-                        currentSystemTime = currentSystemTime,
-                        showSecondsEnabled = showSecondsEnabled,
-                        onClick = {
-                            onOpenDepartureDetails(departure)
-                        },
+                        statusText = statusText,
+                        onOpenQuickRouteSwitch = onOpenQuickRouteSwitch,
+                        onOpenRouteSetup = onOpenRouteSetup,
                     )
                 }
-            } else {
-                item {
-                    EmptyStateCard(emptyStateMessage)
-                }
-            }
 
-            item {
-                Button(
-                    onClick = onRefresh,
-                    modifier = Modifier
-                        .testTag(UiTestTags.BOARD_REFRESH_BUTTON)
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                ) {
-                    Text(if (isRefreshing) "Refreshing..." else "Refresh")
+                if (departures.isNotEmpty()) {
+                    items(
+                        items = departures,
+                        key = { departure -> departure.rowKey },
+                    ) { departure ->
+                        DepartureRow(
+                            selection = selection,
+                            departure = departure,
+                            routeRepo = routeRepo,
+                            currentSystemTime = currentSystemTime,
+                            showSecondsEnabled = showSecondsEnabled,
+                            onClick = {
+                                onOpenDepartureDetails(departure)
+                            },
+                        )
+                    }
+                } else {
+                    item {
+                        EmptyStateCard(emptyStateMessage)
+                    }
+                }
+
+                item {
+                    Button(
+                        onClick = onRefresh,
+                        modifier = Modifier
+                            .testTag(UiTestTags.BOARD_REFRESH_BUTTON)
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    ) {
+                        Text(if (isRefreshing) "Refreshing..." else "Refresh")
+                    }
+                }
+                item {
+                    AutoUpdatesCard(
+                        autoUpdatesEnabled = autoUpdatesEnabled,
+                        onToggleAutoUpdates = onToggleAutoUpdates,
+                    )
+                }
+                item {
+                    SettingsLauncherButton(
+                        onOpenSettings = onOpenSettings,
+                    )
                 }
             }
-            item {
-                AutoUpdatesCard(
-                    autoUpdatesEnabled = autoUpdatesEnabled,
-                    onToggleAutoUpdates = onToggleAutoUpdates,
-                )
-            }
-            item {
-                SettingsLauncherButton(
-                    onOpenSettings = onOpenSettings,
-                )
-            }
+            ScrollIndicator(
+                listState,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
-        ScrollIndicator(
-            listState,
-            modifier = Modifier.fillMaxSize(),
-        )
     }
 }
 

@@ -2,6 +2,8 @@ package com.example.routetracker.presentation
 
 object UiTestTags {
     const val HEADER_CARD = "header_card"
+    const val BOARD_PULL_REFRESH_CONTAINER = "board_pull_refresh_container"
+    const val BOARD_PULL_REFRESH_INDICATOR = "board_pull_refresh_indicator"
     const val BOARD_REFRESH_BUTTON = "board_refresh_button"
     const val QUICK_SWITCH_SWAP_BUTTON = "quick_switch_swap_button"
     const val QUICK_SWITCH_NEW_ROUTE_BUTTON = "quick_switch_new_route_button"

@@ -1,0 +1,1 @@
+services.gradle.org, plugins.gradle.org, repo.maven.apache.org, dl.google.com, developer.android.com, developer.samsung.com, www.samsung.com, kotlinlang.org, docs.gradle.org, github.com, codeload.github.com, raw.githubusercontent.com, api.github.com, developers.openai.com, platform.openai.com, help.openai.com

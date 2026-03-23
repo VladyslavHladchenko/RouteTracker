@@ -1,18 +1,18 @@
 package com.example.routetracker.presentation
 
 object UiTestTags {
-    const val HEADER_CARD = "header_card"
-    const val BOARD_PULL_REFRESH_CONTAINER = "board_pull_refresh_container"
-    const val BOARD_PULL_REFRESH_INDICATOR = "board_pull_refresh_indicator"
-    const val TRIP_DETAILS_PULL_REFRESH_CONTAINER = "trip_details_pull_refresh_container"
-    const val TRIP_DETAILS_PULL_REFRESH_INDICATOR = "trip_details_pull_refresh_indicator"
+    const val BOARD_SUMMARY_CARD = "board_summary_card"
+    const val BOARD_CHANGE_ROUTE_BUTTON = "board_change_route_button"
+    const val BOARD_REFRESH_BUTTON = "board_refresh_button"
+    const val BOARD_SETTINGS_BUTTON = "board_settings_button"
+    const val BOARD_AUTO_UPDATES_SWITCH = "board_auto_updates_switch"
     const val QUICK_SWITCH_SWAP_BUTTON = "quick_switch_swap_button"
     const val QUICK_SWITCH_NEW_ROUTE_BUTTON = "quick_switch_new_route_button"
-    const val SETTINGS_CLOSE_BUTTON = "settings_close_button"
+    const val ROUTE_SETUP_APPLY_BUTTON = "route_setup_apply_button"
     const val SETTINGS_API_KEY_BUTTON = "settings_api_key_button"
     const val SETTINGS_API_KEY_SAVE_BUTTON = "settings_api_key_save_button"
     const val SETTINGS_API_KEY_CLEAR_BUTTON = "settings_api_key_clear_button"
-    const val TRIP_DETAILS_CLOSE_BUTTON = "trip_details_close_button"
+    const val TRIP_DETAILS_REFRESH_BUTTON = "trip_details_refresh_button"
 
     fun departureCard(rowKey: String): String = "departure_card:$rowKey"
 
@@ -21,4 +21,8 @@ object UiTestTags {
     fun departureDelay(rowKey: String): String = "departure_delay:$rowKey"
 
     fun favoriteRouteCard(stableKey: String): String = "favorite_route:$stableKey"
+
+    fun favoriteRouteEditAction(stableKey: String): String = "favorite_route_edit:$stableKey"
+
+    fun favoriteRouteDeleteAction(stableKey: String): String = "favorite_route_delete:$stableKey"
 }

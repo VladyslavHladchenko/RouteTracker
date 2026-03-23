@@ -1,19 +1,19 @@
 package com.example.routetracker.presentation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.longClick
-import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeLeft
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.wear.compose.material3.TimeSource
+import androidx.wear.compose.material3.TimeText
 import com.example.routetracker.data.LineSelection
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.data.RouteSelection
@@ -35,19 +35,17 @@ class WearUiFlowTest {
         get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Test
-    fun headerTapOpensQuickSwitch_andLongPressOpensFullSetup() {
+    fun boardUsesVisiblePrimaryActions() {
         val snapshot = RouteRepository.previewSnapshot(selection = sampleAnyPlatformSelection())
-        val routeRepo = RouteRepository(context)
         var quickSwitchOpened = false
-        var fullSetupOpened = false
+        var refreshed = false
 
         setRouteTrackerContent {
             BoardScreen(
                 selection = snapshot.selection,
                 departures = snapshot.departures,
                 snapshot = snapshot,
-                statusText = "Live | 18:30",
-                routeRepo = routeRepo,
+                statusText = "Live | Updated",
                 currentSystemTime = snapshot.fetchedAt,
                 showSecondsEnabled = false,
                 autoUpdatesEnabled = true,
@@ -55,22 +53,17 @@ class WearUiFlowTest {
                 onOpenSettings = {},
                 onToggleAutoUpdates = {},
                 onOpenQuickRouteSwitch = { quickSwitchOpened = true },
-                onOpenRouteSetup = { fullSetupOpened = true },
                 onOpenDepartureDetails = {},
-                onRefresh = {},
+                onRefresh = { refreshed = true },
             )
         }
 
-        composeRule.onNodeWithTag(UiTestTags.HEADER_CARD).performClick()
-        composeRule.runOnIdle {
-            assertTrue("Quick switch should open on tap.", quickSwitchOpened)
-        }
+        composeRule.onNodeWithTag(UiTestTags.BOARD_CHANGE_ROUTE_BUTTON).performClick()
+        composeRule.onNodeWithTag(UiTestTags.BOARD_REFRESH_BUTTON).performClick()
 
-        composeRule.onNodeWithTag(UiTestTags.HEADER_CARD).performTouchInput {
-            longClick()
-        }
         composeRule.runOnIdle {
-            assertTrue("Full route setup should open on long press.", fullSetupOpened)
+            assertTrue("Change route should be visible and tappable.", quickSwitchOpened)
+            assertTrue("Refresh should be visible and tappable.", refreshed)
         }
     }
 
@@ -83,15 +76,13 @@ class WearUiFlowTest {
             boardedPlatformLabel = "Platform 2",
             delayMinutes = 1,
         )
-        val routeRepo = RouteRepository(context)
 
         setRouteTrackerContent {
             BoardScreen(
                 selection = selection,
                 departures = listOf(departure),
                 snapshot = snapshot.copy(departures = listOf(departure)),
-                statusText = "Live | 18:30",
-                routeRepo = routeRepo,
+                statusText = "Live | Updated",
                 currentSystemTime = snapshot.fetchedAt,
                 showSecondsEnabled = false,
                 autoUpdatesEnabled = true,
@@ -99,7 +90,6 @@ class WearUiFlowTest {
                 onOpenSettings = {},
                 onToggleAutoUpdates = {},
                 onOpenQuickRouteSwitch = {},
-                onOpenRouteSetup = {},
                 onOpenDepartureDetails = {},
                 onRefresh = {},
             )
@@ -108,58 +98,11 @@ class WearUiFlowTest {
         composeRule.onNodeWithTag(
             UiTestTags.departurePlatform(departure.rowKey),
             useUnmergedTree = true,
-        )
-            .assertTextEquals("2")
+        ).assertTextEquals("2")
         composeRule.onNodeWithTag(
             UiTestTags.departureDelay(departure.rowKey),
             useUnmergedTree = true,
-        )
-            .assertIsDisplayed()
-            .assertTextEquals("+1m")
-    }
-
-    @Test
-    fun boardRowShowsPlatformWhenOriginPlatformIsPreselected() {
-        val selection = samplePinnedSelection()
-        val snapshot = RouteRepository.previewSnapshot(selection = selection)
-        val departure = snapshot.departures.first().copy(
-            boardedStopId = "origin-stop-2",
-            boardedPlatformLabel = "Platform 2",
-            delayMinutes = 1,
-        )
-        val routeRepo = RouteRepository(context)
-
-        setRouteTrackerContent {
-            BoardScreen(
-                selection = selection,
-                departures = listOf(departure),
-                snapshot = snapshot.copy(departures = listOf(departure)),
-                statusText = "Live | 18:30",
-                routeRepo = routeRepo,
-                currentSystemTime = snapshot.fetchedAt,
-                showSecondsEnabled = false,
-                autoUpdatesEnabled = true,
-                isRefreshing = false,
-                onOpenSettings = {},
-                onToggleAutoUpdates = {},
-                onOpenQuickRouteSwitch = {},
-                onOpenRouteSetup = {},
-                onOpenDepartureDetails = {},
-                onRefresh = {},
-            )
-        }
-
-        composeRule.onNodeWithTag(
-            UiTestTags.departurePlatform(departure.rowKey),
-            useUnmergedTree = true,
-        )
-            .assertTextEquals("2")
-        composeRule.onNodeWithTag(
-            UiTestTags.departureDelay(departure.rowKey),
-            useUnmergedTree = true,
-        )
-            .assertIsDisplayed()
-            .assertTextEquals("+1m")
+        ).assertIsDisplayed().assertTextEquals("+1m")
     }
 
     @Test
@@ -198,15 +141,14 @@ class WearUiFlowTest {
     }
 
     @Test
-    fun quickSwitchSwapAppliesSelectionBeforeFavorites() {
+    fun quickSwitchSwapButtonAppliesSwappedSelection() {
         val currentSelection = samplePinnedSelection()
-        val favorite = sampleAnyPlatformSelection().copy(line = null)
         var swappedSelection: RouteSelection? = null
 
         setRouteTrackerContent {
             QuickRouteSwitchScreen(
                 currentSelection = currentSelection,
-                favoriteRoutes = listOf(favorite),
+                favoriteRoutes = emptyList(),
                 onSwapRoute = { swappedSelection = it },
                 onApplyFavorite = {},
                 onEditFavorite = {},
@@ -215,17 +157,7 @@ class WearUiFlowTest {
             )
         }
 
-        val swapButton = composeRule.onNodeWithTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON)
-        val firstFavorite = composeRule.onNodeWithTag(UiTestTags.favoriteRouteCard(favorite.stableKey))
-
-        swapButton.assertIsDisplayed()
-        firstFavorite.assertIsDisplayed()
-
-        val swapTop = swapButton.fetchSemanticsNode().boundsInRoot.top
-        val favoriteTop = firstFavorite.fetchSemanticsNode().boundsInRoot.top
-        assertTrue("Swap action should appear above favorites.", swapTop < favoriteTop)
-
-        swapButton.performTouchInput { doubleClick(center) }
+        composeRule.onNodeWithTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON).performClick()
         composeRule.runOnIdle {
             val applied = swappedSelection
             requireNotNull(applied)
@@ -236,7 +168,7 @@ class WearUiFlowTest {
     }
 
     @Test
-    fun favoriteLongPressOpensEditAndDeleteMenu() {
+    fun favoriteSwipeRevealsEditAndDeleteActions() {
         val favorite = sampleAnyPlatformSelection()
 
         setRouteTrackerContent {
@@ -252,14 +184,50 @@ class WearUiFlowTest {
         }
 
         composeRule.onNodeWithTag(UiTestTags.favoriteRouteCard(favorite.stableKey))
-            .performTouchInput { longClick() }
+            .performTouchInput { swipeLeft() }
 
-        composeRule.onNodeWithText("Edit favorite").assertIsDisplayed()
-        composeRule.onNodeWithText("Delete favorite").assertIsDisplayed()
+        composeRule.onNodeWithTag(
+            UiTestTags.favoriteRouteEditAction(favorite.stableKey),
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
+        composeRule.onNodeWithTag(
+            UiTestTags.favoriteRouteDeleteAction(favorite.stableKey),
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
     }
 
     @Test
-    fun tripDetailsShowsBoardingPlatformAndCloseDismisses() {
+    fun routeSetupApplyUsesEdgeButton_andNoCloseFooter() {
+        val currentSelection = samplePinnedSelection()
+        var applied = false
+
+        setRouteTrackerContent {
+            RouteSetupHomePage(
+                draftSelection = currentSelection,
+                favoriteRoutes = listOf(currentSelection),
+                isEditingFavorite = false,
+                isCatalogLoading = false,
+                catalogError = null,
+                onChooseOrigin = {},
+                onChooseDestination = {},
+                onChooseLine = {},
+                onToggleFavorite = {},
+                onApplyFavorite = {},
+                onApplyRoute = { applied = true },
+                onRetryCatalog = {},
+                onClose = {},
+            )
+        }
+
+        composeRule.onNodeWithTag(UiTestTags.ROUTE_SETUP_APPLY_BUTTON).performClick()
+        composeRule.onNodeWithText("Close").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertTrue("Apply route should be driven by the edge button.", applied)
+        }
+    }
+
+    @Test
+    fun tripDetailsShowsBoardingPlatformAndRefresh_withoutCloseFooter() {
         val selection = sampleAnyPlatformSelection()
         val snapshot = RouteRepository.previewSnapshot(selection = selection)
         val departure = snapshot.departures.first().copy(
@@ -267,7 +235,7 @@ class WearUiFlowTest {
             boardedPlatformLabel = "Platform 2",
         )
         val routeRepo = RouteRepository(context)
-        var dismissed = false
+        var refreshCount = 0
 
         setRouteTrackerContent {
             DepartureDetailsScreen(
@@ -277,17 +245,36 @@ class WearUiFlowTest {
                 currentSystemTime = ZonedDateTime.now(),
                 showSecondsEnabled = false,
                 isRefreshing = false,
-                onRefresh = {},
-                onDismiss = { dismissed = true },
+                onRefresh = { refreshCount += 1 },
+                onDismiss = {},
             )
         }
 
         composeRule.onNodeWithText("Boarding platform").assertIsDisplayed()
         composeRule.onNodeWithText("2").assertIsDisplayed()
-        clickTagAfterScrolling(UiTestTags.TRIP_DETAILS_CLOSE_BUTTON)
+        composeRule.onNodeWithTag(UiTestTags.TRIP_DETAILS_REFRESH_BUTTON).performClick()
+        composeRule.onNodeWithText("Close").assertDoesNotExist()
         composeRule.runOnIdle {
-            assertTrue("Close should dismiss trip details.", dismissed)
+            assertEquals(1, refreshCount)
         }
+    }
+
+    @Test
+    fun apiKeyScreenKeepsSemanticActions_withoutBackFooter() {
+        setRouteTrackerContent {
+            ApiKeySettingsScreen(
+                value = "demo",
+                sourceLabel = "Watch override",
+                onValueChange = {},
+                onSave = {},
+                onUseBuiltIn = {},
+                onDismiss = {},
+            )
+        }
+
+        composeRule.onNodeWithTag(UiTestTags.SETTINGS_API_KEY_SAVE_BUTTON).assertIsDisplayed()
+        composeRule.onNodeWithTag(UiTestTags.SETTINGS_API_KEY_CLEAR_BUTTON).assertIsDisplayed()
+        composeRule.onNodeWithText("Back").assertDoesNotExist()
     }
 
     private fun sampleAnyPlatformSelection(): RouteSelection {
@@ -299,7 +286,7 @@ class WearUiFlowTest {
             ),
             destination = StopSelection(
                 stationKey = "station:vrsovice",
-                stationName = "Nádraží Vršovice",
+                stationName = "Nadrazi Vrsovice",
                 stopIds = listOf("stop-c"),
             ),
             line = LineSelection(shortName = "7"),
@@ -317,7 +304,7 @@ class WearUiFlowTest {
             ),
             destination = StopSelection(
                 stationKey = "station:vrsovice",
-                stationName = "Nádraží Vršovice",
+                stationName = "Nadrazi Vrsovice",
                 platformKey = "platform-4",
                 platformLabel = "Platform 4",
                 stopIds = listOf("stop-c"),
@@ -328,26 +315,19 @@ class WearUiFlowTest {
     private fun setRouteTrackerContent(content: @Composable () -> Unit) {
         composeRule.setContent {
             RouteTrackerTheme {
-                content()
+                RouteTrackerAppScaffold(
+                    timeText = {
+                        TimeText(timeSource = FixedTimeSource)
+                    },
+                ) {
+                    content()
+                }
             }
         }
     }
 
-    private fun clickTagAfterScrolling(tag: String, maxSwipes: Int = 6) {
-        var lastError: AssertionError? = null
-        repeat(maxSwipes + 1) { attempt ->
-            try {
-                composeRule.onNodeWithTag(tag).performClick()
-                return
-            } catch (error: AssertionError) {
-                lastError = error
-                if (attempt == maxSwipes) {
-                    return@repeat
-                }
-                composeRule.onRoot().performTouchInput { swipeUp() }
-                composeRule.waitForIdle()
-            }
-        }
-        throw lastError ?: AssertionError("Expected tag $tag to be clickable.")
+    private object FixedTimeSource : TimeSource {
+        @Composable
+        override fun currentTime(): String = "18:30"
     }
 }

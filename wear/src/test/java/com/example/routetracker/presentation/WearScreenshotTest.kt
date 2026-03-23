@@ -6,14 +6,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.github.takahirom.roborazzi.captureRoboImage
-import com.github.takahirom.roborazzi.RoborazziOptions
-import com.github.takahirom.roborazzi.RoborazziTaskType
+import androidx.wear.compose.material3.TimeSource
+import androidx.wear.compose.material3.TimeText
 import com.example.routetracker.data.LineSelection
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.data.RouteSelection
 import com.example.routetracker.data.StopSelection
 import com.example.routetracker.presentation.theme.RouteTrackerTheme
+import com.github.takahirom.roborazzi.RoborazziOptions
+import com.github.takahirom.roborazzi.RoborazziTaskType
+import com.github.takahirom.roborazzi.captureRoboImage
 import java.io.File
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -35,7 +37,6 @@ class WearScreenshotTest {
     fun smallRound_boardWithDepartures() {
         val selection = sampleAnyPlatformSelection()
         val snapshot = previewSnapshot(selection)
-        val routeRepo = RouteRepository(composeRule.activity)
 
         setRouteTrackerContent {
             BoardScreen(
@@ -43,7 +44,6 @@ class WearScreenshotTest {
                 departures = snapshot.departures,
                 snapshot = snapshot,
                 statusText = "Live | 18:30",
-                routeRepo = routeRepo,
                 currentSystemTime = snapshot.fetchedAt,
                 showSecondsEnabled = false,
                 autoUpdatesEnabled = true,
@@ -51,7 +51,6 @@ class WearScreenshotTest {
                 onOpenSettings = {},
                 onToggleAutoUpdates = {},
                 onOpenQuickRouteSwitch = {},
-                onOpenRouteSetup = {},
                 onOpenDepartureDetails = {},
                 onRefresh = {},
             )
@@ -64,7 +63,6 @@ class WearScreenshotTest {
     fun smallRound_boardWithPlatformAndDelay() {
         val selection = sampleAnyPlatformSelection()
         val snapshot = previewSnapshot(selection)
-        val routeRepo = RouteRepository(composeRule.activity)
         val departure = snapshot.departures.first().copy(
             boardedStopId = "origin-stop-2",
             boardedPlatformLabel = "Platform 2",
@@ -77,7 +75,6 @@ class WearScreenshotTest {
                 departures = listOf(departure),
                 snapshot = snapshot.copy(departures = listOf(departure)),
                 statusText = "Live | 18:30",
-                routeRepo = routeRepo,
                 currentSystemTime = snapshot.fetchedAt,
                 showSecondsEnabled = false,
                 autoUpdatesEnabled = true,
@@ -85,7 +82,6 @@ class WearScreenshotTest {
                 onOpenSettings = {},
                 onToggleAutoUpdates = {},
                 onOpenQuickRouteSwitch = {},
-                onOpenRouteSetup = {},
                 onOpenDepartureDetails = {},
                 onRefresh = {},
             )
@@ -98,7 +94,6 @@ class WearScreenshotTest {
     fun smallRound_boardWithPinnedPlatformAndDelay() {
         val selection = samplePinnedSelection()
         val snapshot = previewSnapshot(selection)
-        val routeRepo = RouteRepository(composeRule.activity)
         val departure = snapshot.departures.first().copy(
             boardedStopId = "origin-stop-2",
             boardedPlatformLabel = "Platform 2",
@@ -111,7 +106,6 @@ class WearScreenshotTest {
                 departures = listOf(departure),
                 snapshot = snapshot.copy(departures = listOf(departure)),
                 statusText = "Live | 18:30",
-                routeRepo = routeRepo,
                 currentSystemTime = snapshot.fetchedAt,
                 showSecondsEnabled = false,
                 autoUpdatesEnabled = true,
@@ -119,7 +113,6 @@ class WearScreenshotTest {
                 onOpenSettings = {},
                 onToggleAutoUpdates = {},
                 onOpenQuickRouteSwitch = {},
-                onOpenRouteSetup = {},
                 onOpenDepartureDetails = {},
                 onRefresh = {},
             )
@@ -132,7 +125,6 @@ class WearScreenshotTest {
     fun largeRound_boardLoadingState() {
         val selection = sampleAnyPlatformSelection()
         val snapshot = previewSnapshot(selection)
-        val routeRepo = RouteRepository(composeRule.activity)
 
         setRouteTrackerContent {
             BoardScreen(
@@ -140,7 +132,6 @@ class WearScreenshotTest {
                 departures = emptyList(),
                 snapshot = null,
                 statusText = "Loading",
-                routeRepo = routeRepo,
                 currentSystemTime = snapshot.fetchedAt,
                 showSecondsEnabled = false,
                 autoUpdatesEnabled = true,
@@ -148,7 +139,6 @@ class WearScreenshotTest {
                 onOpenSettings = {},
                 onToggleAutoUpdates = {},
                 onOpenQuickRouteSwitch = {},
-                onOpenRouteSetup = {},
                 onOpenDepartureDetails = {},
                 onRefresh = {},
             )
@@ -258,7 +248,13 @@ class WearScreenshotTest {
     private fun setRouteTrackerContent(content: @Composable () -> Unit) {
         composeRule.setContent {
             RouteTrackerTheme {
-                content()
+                RouteTrackerAppScaffold(
+                    timeText = {
+                        TimeText(timeSource = FixedTimeSource)
+                    },
+                ) {
+                    content()
+                }
             }
         }
     }
@@ -295,7 +291,7 @@ class WearScreenshotTest {
             ),
             destination = StopSelection(
                 stationKey = "station:vrsovice",
-                stationName = "Nádraží Vršovice",
+                stationName = "Nadrazi Vrsovice",
                 platformKey = destinationPlatform?.lowercase(),
                 platformLabel = destinationPlatform?.let { "Platform $it" },
                 stopIds = listOf("stop-c"),
@@ -318,6 +314,11 @@ class WearScreenshotTest {
 
     private fun previewSnapshot(selection: RouteSelection) =
         RouteRepository.previewSnapshot(selection = selection, now = FIXED_NOW)
+
+    private object FixedTimeSource : TimeSource {
+        @Composable
+        override fun currentTime(): String = "18:30"
+    }
 
     private companion object {
         const val SMALL_ROUND_QUALIFIERS = "w220dp-h220dp-round"

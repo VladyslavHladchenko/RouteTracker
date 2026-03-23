@@ -23,6 +23,7 @@ gradlew-local.ps1
 .kotlin/
 .android-local/
 .codex/*
+.codex-tmp/
 !.codex/skills/
 .codex/skills/*
 !.codex/skills/android-wear-os-dev/

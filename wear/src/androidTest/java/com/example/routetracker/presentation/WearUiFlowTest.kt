@@ -1,10 +1,11 @@
 package com.example.routetracker.presentation
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -220,7 +221,7 @@ class WearUiFlowTest {
         }
 
         composeRule.onNodeWithTag(UiTestTags.ROUTE_SETUP_APPLY_BUTTON).performClick()
-        composeRule.onNodeWithText("Close").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Close").assertCountEquals(0)
         composeRule.runOnIdle {
             assertTrue("Apply route should be driven by the edge button.", applied)
         }
@@ -253,7 +254,7 @@ class WearUiFlowTest {
         composeRule.onNodeWithText("Boarding platform").assertIsDisplayed()
         composeRule.onNodeWithText("2").assertIsDisplayed()
         composeRule.onNodeWithTag(UiTestTags.TRIP_DETAILS_REFRESH_BUTTON).performClick()
-        composeRule.onNodeWithText("Close").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Close").assertCountEquals(0)
         composeRule.runOnIdle {
             assertEquals(1, refreshCount)
         }
@@ -274,7 +275,7 @@ class WearUiFlowTest {
 
         composeRule.onNodeWithTag(UiTestTags.SETTINGS_API_KEY_SAVE_BUTTON).assertIsDisplayed()
         composeRule.onNodeWithTag(UiTestTags.SETTINGS_API_KEY_CLEAR_BUTTON).assertIsDisplayed()
-        composeRule.onNodeWithText("Back").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Back").assertCountEquals(0)
     }
 
     private fun sampleAnyPlatformSelection(): RouteSelection {

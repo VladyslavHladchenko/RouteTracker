@@ -4,6 +4,7 @@
 
 - RouteTracker is an Android project for Prague PID departures, with most active product work in the `wear` module.
 - `mobile` exists and should keep building, but the main UX, UI tests, and screenshot tests live under `wear`.
+- Current local target hardware is Samsung Galaxy Watch7 44mm on One UI Watch; assume touch-first usage and keep Samsung watch behavior in mind for Wear UI and debugging decisions.
 - CI and workflow behavior are documented in `docs/ci.md`.
 - Local API reference files such as `golemio-openapi.json` and `golemio-pid-openapi.json` are checked in for reference only.
 
@@ -14,6 +15,7 @@
 - `wear/src/androidTest/` - instrumented Wear UI tests
 - `wear/src/test/screenshots/` - committed Roborazzi baselines
 - `mobile/` - companion app module; keep it building unless the task explicitly scopes it out
+- `.codex/skills/android-wear-os-dev/` - repo-tracked Wear OS and Samsung Galaxy Watch development skill; use it for relevant Wear, watch UI/UX, Samsung-device, accessibility, navigation, performance, tiles, complications, and review tasks
 - `gradlew` and `gradlew.bat` - the checked-in Gradle Wrapper launchers; prefer these over a random system Gradle when possible
 - `.github/workflows/` - GitHub Actions workflows used as the main validation path
 - `docs/ci.md` - current CI setup and artifact behavior
@@ -23,7 +25,7 @@
 - Keep changes focused. Do not mix unrelated refactors into feature or bug-fix work.
 - Preserve existing UI and architecture patterns unless the task explicitly calls for redesign.
 - Keep `README.md` human-facing. Put agent-only workflow, validation, and execution policy in `AGENTS.md` or `docs/ci.md` instead of expanding `README.md` with Codex-specific instructions.
-- Prefer repo-tracked instructions over local-only setup. Do not depend on ignored local files such as `.codex/`, `.android-local/`, `.gradle-local/`, or `gradlew-local.ps1`.
+- Prefer repo-tracked instructions over local-only setup. Use repo-tracked skills when they match the task, especially `.codex/skills/android-wear-os-dev`. Do not depend on ignored local files such as `.android-local/`, `.gradle-local/`, or `gradlew-local.ps1`.
 - Do not commit or push directly to protected `main`. Work on a short-lived task branch and deliver changes through a pull request.
 - In local desktop and local CLI Codex sessions, rely on GitHub Actions for validation by default. Do not run local Gradle, lint, unit, screenshot, or emulator validation unless the user explicitly asks for local execution or GitHub cannot answer a blocking question.
 - Keep an open pull request for active work. After the first meaningful change, push the branch and create or update the PR instead of accumulating local-only progress.

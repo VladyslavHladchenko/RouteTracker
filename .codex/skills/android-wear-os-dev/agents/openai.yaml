@@ -1,0 +1,4 @@
+interface:
+  display_name: "Android + Wear OS"
+  short_description: "Build and review Android/Wear OS apps"
+  default_prompt: "Use $android-wear-os-dev to build or review a Wear OS app change using current official Android guidance."

@@ -22,7 +22,11 @@ gradlew-local.ps1
 .gradle-home/
 .kotlin/
 .android-local/
-.codex/
+.codex/*
+!.codex/skills/
+.codex/skills/*
+!.codex/skills/android-wear-os-dev/
+!.codex/skills/android-wear-os-dev/**
 .codex-artifacts/
 .codex-tmp/
 build/

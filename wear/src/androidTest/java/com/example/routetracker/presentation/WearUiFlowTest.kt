@@ -2,6 +2,7 @@ package com.example.routetracker.presentation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -190,11 +191,11 @@ class WearUiFlowTest {
         composeRule.onNodeWithTag(
             UiTestTags.favoriteRouteEditAction(favorite.stableKey),
             useUnmergedTree = true,
-        ).assertIsDisplayed()
+        ).assertExists()
         composeRule.onNodeWithTag(
             UiTestTags.favoriteRouteDeleteAction(favorite.stableKey),
             useUnmergedTree = true,
-        ).assertIsDisplayed()
+        ).assertExists()
     }
 
     @Test

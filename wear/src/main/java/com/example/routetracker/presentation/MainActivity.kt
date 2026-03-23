@@ -11,18 +11,14 @@ import android.widget.EditText
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -37,24 +33,29 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
-import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.items
-import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
+import androidx.wear.compose.material3.Card
+import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.IconButton
+import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
-import androidx.wear.compose.material3.ScrollIndicator
+import androidx.wear.compose.material3.SurfaceTransformation
+import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.lazy.TransformationSpec
+import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
@@ -65,7 +66,6 @@ import com.example.routetracker.data.RouteDeparture
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.data.RouteSelection
 import com.example.routetracker.presentation.theme.RouteTrackerTheme
-import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
@@ -84,8 +84,6 @@ private const val TRIP_DETAILS_ROUTE = "trip_details"
 private val BOARDING_PLATFORM_COLOR = Color(0xFF70D38A)
 private val ACTIVITY_DELAY_COLOR = Color(0xFFF0C44C)
 private val PREVIEW_UPDATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val ACTIVITY_CLOCK_MINUTES_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val ACTIVITY_CLOCK_SECONDS_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -444,11 +442,7 @@ fun WearApp(routeRepo: RouteRepository) {
     )
 
     RouteTrackerTheme {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-        ) {
+        RouteTrackerAppScaffold {
             // Keep these surfaces as real Wear navigation destinations so swipe-dismiss
             // returns to the live board instead of finishing the activity.
             SwipeDismissableNavHost(
@@ -484,7 +478,6 @@ fun WearApp(routeRepo: RouteRepository) {
                         departures = departuresForBoard,
                         snapshot = snapshotForBoard,
                         statusText = statusTextForBoard,
-                        routeRepo = routeRepo,
                         currentSystemTime = currentSystemTimeForBoard,
                         showSecondsEnabled = showSecondsForBoard,
                         autoUpdatesEnabled = autoUpdatesForBoard,
@@ -498,12 +491,8 @@ fun WearApp(routeRepo: RouteRepository) {
                             }
                         },
                         onOpenQuickRouteSwitch = {
-                            Log.d(TAG, "Header route launcher tapped.")
+                            Log.d(TAG, "Change route tapped.")
                             navController.navigate(QUICK_SWITCH_ROUTE)
-                        },
-                        onOpenRouteSetup = {
-                            Log.d(TAG, "Header route launcher long-pressed.")
-                            openRouteSetup()
                         },
                         onOpenDepartureDetails = { departure ->
                             selectedDeparture = departure
@@ -704,11 +693,6 @@ fun WearApp(routeRepo: RouteRepository) {
                 }
             }
 
-            ActivityClockChip(
-                showSeconds = showSecondsEnabled,
-                modifier = Modifier
-                    .fillMaxSize(),
-            )
         }
     }
 }
@@ -728,7 +712,6 @@ internal fun BoardScreen(
     departures: List<RouteDeparture>,
     snapshot: DepartureSnapshot?,
     statusText: String,
-    routeRepo: RouteRepository,
     currentSystemTime: ZonedDateTime,
     showSecondsEnabled: Boolean,
     autoUpdatesEnabled: Boolean,
@@ -736,142 +719,158 @@ internal fun BoardScreen(
     onOpenSettings: () -> Unit,
     onToggleAutoUpdates: () -> Unit,
     onOpenQuickRouteSwitch: () -> Unit,
-    onOpenRouteSetup: () -> Unit,
     onOpenDepartureDetails: (RouteDeparture) -> Unit,
     onRefresh: () -> Unit,
 ) {
-    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
+    val listState = rememberTransformingLazyColumnState()
     val emptyStateMessage = when {
         snapshot == null && isRefreshing -> "Loading live departures..."
         snapshot?.errorMessage != null -> snapshot.errorMessage
         else -> "No direct departures right now."
     }
 
-    PullToRefreshContainer(
-        isRefreshing = isRefreshing,
-        onRefresh = onRefresh,
-        containerTag = UiTestTags.BOARD_PULL_REFRESH_CONTAINER,
-        indicatorTag = UiTestTags.BOARD_PULL_REFRESH_INDICATOR,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-        ) {
-            ScalingLazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                state = listState,
-                autoCentering = null,
-                contentPadding = PaddingValues(top = 20.dp, bottom = 24.dp),
+    RouteTrackerListScreen(
+        state = listState,
+        edgeButton = {
+            EdgeButton(
+                onClick = onOpenQuickRouteSwitch,
+                modifier = Modifier.testTag(UiTestTags.BOARD_CHANGE_ROUTE_BUTTON),
             ) {
-                item {
-                    HeaderCard(
-                        selection = selection,
-                        statusText = statusText,
-                        onOpenQuickRouteSwitch = onOpenQuickRouteSwitch,
-                        onOpenRouteSetup = onOpenRouteSetup,
-                    )
-                }
-
-                if (departures.isNotEmpty()) {
-                    items(
-                        items = departures,
-                        key = { departure -> departure.rowKey },
-                    ) { departure ->
-                        DepartureRow(
-                            selection = selection,
-                            departure = departure,
-                            routeRepo = routeRepo,
-                            currentSystemTime = currentSystemTime,
-                            showSecondsEnabled = showSecondsEnabled,
-                            onClick = {
-                                onOpenDepartureDetails(departure)
-                            },
-                        )
-                    }
-                } else {
-                    item {
-                        EmptyStateCard(emptyStateMessage)
-                    }
-                }
-
-                item {
-                    AutoUpdatesCard(
-                        autoUpdatesEnabled = autoUpdatesEnabled,
-                        onToggleAutoUpdates = onToggleAutoUpdates,
-                    )
-                }
-                item {
-                    SettingsLauncherButton(
-                        onOpenSettings = onOpenSettings,
-                    )
-                }
+                Text("Change route")
             }
-            ScrollIndicator(
-                listState,
-                modifier = Modifier.fillMaxSize(),
+        },
+    ) { transformationSpec ->
+        item(key = "board_summary") {
+            BoardSummaryCard(
+                selection = selection,
+                statusText = statusText,
+                onOpenQuickRouteSwitch = onOpenQuickRouteSwitch,
+                onRefresh = onRefresh,
+                transformationSpec = transformationSpec,
+            )
+        }
+
+        if (departures.isNotEmpty()) {
+            items(
+                items = departures,
+                key = { departure -> departure.rowKey },
+            ) { departure ->
+                DepartureRow(
+                    selection = selection,
+                    departure = departure,
+                    currentSystemTime = currentSystemTime,
+                    showSecondsEnabled = showSecondsEnabled,
+                    onClick = {
+                        onOpenDepartureDetails(departure)
+                    },
+                    transformationSpec = transformationSpec,
+                )
+            }
+        } else {
+            item(key = "board_empty_state") {
+                EmptyStateCard(
+                    message = emptyStateMessage,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                )
+            }
+        }
+
+        item(key = "board_settings_button") {
+            SettingsLauncherButton(
+                onOpenSettings = onOpenSettings,
+                transformationSpec = transformationSpec,
+            )
+        }
+        item(key = "board_auto_updates") {
+            AutoUpdatesCard(
+                autoUpdatesEnabled = autoUpdatesEnabled,
+                onToggleAutoUpdates = onToggleAutoUpdates,
+                transformationSpec = transformationSpec,
             )
         }
     }
 }
 
 @Composable
-private fun SettingsLauncherButton(
-    onOpenSettings: () -> Unit,
+private fun TransformingLazyColumnItemScope.BoardSummaryCard(
+    selection: RouteSelection,
+    statusText: String,
+    onOpenQuickRouteSwitch: () -> Unit,
+    onRefresh: () -> Unit,
+    transformationSpec: TransformationSpec,
 ) {
-    Column(
+    Card(
+        onClick = onOpenQuickRouteSwitch,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .testTag(UiTestTags.BOARD_SUMMARY_CARD)
+            .transformedHeight(this, transformationSpec),
+        transformation = SurfaceTransformation(transformationSpec),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
     ) {
-        Button(
-            onClick = onOpenSettings,
-            modifier = Modifier.size(52.dp),
-            colors = ButtonDefaults.filledTonalButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                painter = painterResource(id = android.R.drawable.ic_menu_manage),
-                contentDescription = "Open settings",
-            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = selection.headerLineLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
+                Text(
+                    text = selection.headerRouteSummaryLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                )
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                )
+            }
+            IconButton(
+                onClick = onRefresh,
+                modifier = Modifier.testTag(UiTestTags.BOARD_REFRESH_BUTTON),
+            ) {
+                Icon(
+                    painter = painterResource(id = android.R.drawable.stat_notify_sync),
+                    contentDescription = "Refresh departures",
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun ActivityClockChip(
-    showSeconds: Boolean,
-    modifier: Modifier = Modifier,
+private fun TransformingLazyColumnItemScope.SettingsLauncherButton(
+    onOpenSettings: () -> Unit,
+    transformationSpec: TransformationSpec,
 ) {
-    var clockText by remember { mutableStateOf(formatActivityClock(LocalTime.now(), showSeconds)) }
-
-    LaunchedEffect(showSeconds) {
-        while (true) {
-            val now = System.currentTimeMillis()
-            val nextTickMillis = if (showSeconds) {
-                1_000L - (now % 1_000L)
-            } else {
-                60_000L - (now % 60_000L)
-            }
-            delay(if (nextTickMillis == 0L) 1L else nextTickMillis)
-            clockText = formatActivityClock(LocalTime.now(), showSeconds)
-        }
-    }
-
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.TopCenter,
+    Button(
+        onClick = onOpenSettings,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(UiTestTags.BOARD_SETTINGS_BUTTON)
+            .transformedHeight(this, transformationSpec),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        transformation = SurfaceTransformation(transformationSpec),
     ) {
-        Text(
-            text = clockText,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 6.dp),
-        )
+        Text("Settings")
     }
 }
 
@@ -896,244 +895,150 @@ internal fun SettingsScreen(
     onEditApiKey: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
+    val listState = rememberTransformingLazyColumnState()
 
-    RoundScalingPage(state = listState) {
-        item {
-            Text(
-                text = "Settings",
-                style = MaterialTheme.typography.titleMedium,
+    RouteTrackerListScreen(state = listState) { transformationSpec ->
+        item(key = "settings_header") {
+            ListHeader(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        item {
-            Text(
-                text = "Display",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 4.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        item {
-            Button(
-                onClick = onToggleShowSeconds,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 10.dp),
-                colors = if (showSecondsEnabled) {
-                    ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                } else {
-                    ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    )
-                },
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
             ) {
-                Text(if (showSecondsEnabled) "Show seconds: On" else "Show seconds: Off")
+                Text("Settings")
             }
         }
-        item {
-            Button(
-                onClick = onToggleDetailsDialogAutoRefresh,
+        item(key = "settings_show_seconds") {
+            SwitchButton(
+                checked = showSecondsEnabled,
+                onCheckedChange = { onToggleShowSeconds() },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 8.dp),
-                colors = if (detailsDialogAutoRefreshEnabled) {
-                    ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                } else {
-                    ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    )
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+                label = { Text("Show seconds") },
+                secondaryLabel = { Text("Use second-by-second countdowns") },
+            )
+        }
+        item(key = "settings_auto_refresh") {
+            SwitchButton(
+                checked = detailsDialogAutoRefreshEnabled,
+                onCheckedChange = { onToggleDetailsDialogAutoRefresh() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+                label = { Text("Details auto-refresh") },
+                secondaryLabel = {
+                    Text(if (detailsDialogAutoRefreshEnabled) "Refresh open trip details every 10 seconds" else "Only refresh details when requested")
                 },
+            )
+        }
+        item(key = "settings_live_query_header") {
+            ListHeader(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            ) {
+                Text("Live query")
+            }
+        }
+        item(key = "settings_api_key") {
+            Card(
+                onClick = onEditApiKey,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(UiTestTags.SETTINGS_API_KEY_BUTTON)
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ),
             ) {
                 Text(
-                    if (detailsDialogAutoRefreshEnabled) {
-                        "Details auto-refresh: On (10 s)"
-                    } else {
-                        "Details auto-refresh: Off"
-                    }
+                    text = "API key",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = apiKeySourceLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }
-        item {
-            Text(
-                text = "Live query",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 12.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        item {
-            Button(
-                onClick = onEditApiKey,
-                modifier = Modifier
-                    .testTag(UiTestTags.SETTINGS_API_KEY_BUTTON)
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 8.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            ) {
-                Text("API key: $apiKeySourceLabel")
-            }
-        }
-        item {
+        item(key = "settings_catalog_refresh") {
             Button(
                 onClick = onRefreshTransitCatalog,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 10.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
             ) {
                 Text("Refresh stop catalog")
             }
         }
-        item {
-            Text(
-                text = "Catalog: $transitCatalogLastRefreshLabel",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        item(key = "settings_catalog_status") {
+            DetailValueRow(
+                label = "Catalog synced",
+                value = transitCatalogLastRefreshLabel,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 6.dp),
-                textAlign = TextAlign.Center,
+                    .transformedHeight(this, transformationSpec),
             )
         }
-        item {
-            Row(
+        item(key = "settings_verified_matches") {
+            VerifiedMatchCard(
+                verifiedMatchCount = verifiedMatchCount,
+                onDecreaseVerifiedMatchCount = onDecreaseVerifiedMatchCount,
+                onIncreaseVerifiedMatchCount = onIncreaseVerifiedMatchCount,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "settings_cache_header") {
+            ListHeader(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
             ) {
-                Button(
-                    onClick = onDecreaseVerifiedMatchCount,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                ) {
-                    Text("-")
-                }
-                Text(
-                    text = "Verified matches: $verifiedMatchCount",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(2f),
-                    textAlign = TextAlign.Center,
-                )
-                Button(
-                    onClick = onIncreaseVerifiedMatchCount,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                ) {
-                    Text("+")
-                }
+                Text("Cache")
             }
         }
-        item {
-            Text(
-                text = "Cache",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 12.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        item {
+        item(key = "settings_live_snapshot_cache") {
             Button(
                 onClick = onCycleLiveSnapshotCache,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 10.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
             ) {
                 Text("Live snapshot: $liveSnapshotCacheLabel")
             }
         }
-        item {
+        item(key = "settings_trip_detail_cache") {
             Button(
                 onClick = onCycleGtfsTripDetailCache,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 8.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
             ) {
                 Text("Trip detail: $gtfsTripDetailCacheLabel")
             }
         }
-        item {
+        item(key = "settings_vehicle_cache") {
             Button(
                 onClick = onCycleVehiclePositionCache,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 8.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
             ) {
                 Text("Vehicle live: $vehiclePositionCacheLabel")
-            }
-        }
-        item {
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .testTag(UiTestTags.SETTINGS_CLOSE_BUTTON)
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 12.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-            ) {
-                Text("Close")
             }
         }
     }
@@ -1148,94 +1053,78 @@ internal fun ApiKeySettingsScreen(
     onUseBuiltIn: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
+    val listState = rememberTransformingLazyColumnState()
 
-    RoundScalingPage(state = listState) {
-        item {
-            Text(
-                text = "Golemio API key",
-                style = MaterialTheme.typography.titleMedium,
+    RouteTrackerListScreen(
+        state = listState,
+        timeText = {},
+    ) { transformationSpec ->
+        item(key = "api_key_header") {
+            ListHeader(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp),
-                textAlign = TextAlign.Center,
-            )
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            ) {
+                Text("Golemio API key")
+            }
         }
-        item {
-            Text(
-                text = "Watch setting overrides the built-in key.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        item(key = "api_key_notice") {
+            EmptyStateCard(
+                message = "Advanced setting. Watch override replaces the built-in key for this device.",
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 6.dp),
-                textAlign = TextAlign.Center,
+                    .transformedHeight(this, transformationSpec),
             )
         }
-        item {
-            Text(
-                text = "Current source: $sourceLabel",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        item(key = "api_key_source") {
+            DetailValueRow(
+                label = "Current source",
+                value = sourceLabel,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 4.dp),
-                textAlign = TextAlign.Center,
+                    .transformedHeight(this, transformationSpec),
             )
         }
-        item {
+        item(key = "api_key_input") {
             ApiKeyInputCard(
                 value = value,
                 onValueChange = onValueChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
             )
         }
-        item {
+        item(key = "api_key_save") {
             Button(
                 onClick = onSave,
                 modifier = Modifier
-                    .testTag(UiTestTags.SETTINGS_API_KEY_SAVE_BUTTON)
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 12.dp),
+                    .testTag(UiTestTags.SETTINGS_API_KEY_SAVE_BUTTON)
+                    .transformedHeight(this, transformationSpec),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ),
+                transformation = SurfaceTransformation(transformationSpec),
             ) {
                 Text("Save key")
             }
         }
-        item {
+        item(key = "api_key_clear") {
             Button(
                 onClick = onUseBuiltIn,
                 modifier = Modifier
-                    .testTag(UiTestTags.SETTINGS_API_KEY_CLEAR_BUTTON)
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 8.dp),
+                    .testTag(UiTestTags.SETTINGS_API_KEY_CLEAR_BUTTON)
+                    .transformedHeight(this, transformationSpec),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.onSurface,
                 ),
+                transformation = SurfaceTransformation(transformationSpec),
             ) {
                 Text("Use built-in key")
-            }
-        }
-        item {
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 8.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            ) {
-                Text("Back")
             }
         }
     }
@@ -1245,21 +1134,12 @@ internal fun ApiKeySettingsScreen(
 private fun ApiKeyInputCard(
     value: String,
     onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val hintColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .padding(top = 12.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(22.dp),
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
+    PanelSurface(modifier = modifier) {
         Text(
             text = "Paste key",
             style = MaterialTheme.typography.bodySmall,
@@ -1316,81 +1196,25 @@ private fun ApiKeyInputCard(
     }
 }
 
-private fun formatActivityClock(
-    time: LocalTime,
-    showSeconds: Boolean,
-): String {
-    return time.format(
-        if (showSeconds) ACTIVITY_CLOCK_SECONDS_FORMATTER else ACTIVITY_CLOCK_MINUTES_FORMATTER
-    )
-}
-
 @Composable
-private fun HeaderCard(
-    selection: RouteSelection,
-    statusText: String,
-    onOpenQuickRouteSwitch: () -> Unit,
-    onOpenRouteSetup: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .testTag(UiTestTags.HEADER_CARD)
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                shape = RoundedCornerShape(24.dp),
-            )
-            .combinedClickable(
-                onClick = onOpenQuickRouteSwitch,
-                onLongClick = onOpenRouteSetup,
-            )
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = selection.headerLineLabel,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            text = selection.headerRouteSummaryLabel,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            text = statusText,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@Composable
-private fun DepartureRow(
+private fun TransformingLazyColumnItemScope.DepartureRow(
     selection: RouteSelection,
     departure: RouteDeparture,
-    routeRepo: RouteRepository,
     currentSystemTime: ZonedDateTime,
     showSecondsEnabled: Boolean,
     onClick: () -> Unit,
+    transformationSpec: TransformationSpec,
 ) {
-    Column(
+    Card(
+        onClick = onClick,
         modifier = Modifier
             .testTag(UiTestTags.departureCard(departure.rowKey))
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(22.dp),
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .transformedHeight(this, transformationSpec),
+        transformation = SurfaceTransformation(transformationSpec),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1456,16 +1280,173 @@ internal fun DepartureDetailsScreen(
     onRefresh: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
+    val listState = rememberTransformingLazyColumnState()
 
-    PullToRefreshContainer(
-        isRefreshing = isRefreshing,
-        onRefresh = onRefresh,
-        containerTag = UiTestTags.TRIP_DETAILS_PULL_REFRESH_CONTAINER,
-        indicatorTag = UiTestTags.TRIP_DETAILS_PULL_REFRESH_INDICATOR,
+    RouteTrackerListScreen(state = listState) { transformationSpec ->
+        item(key = "trip_details_summary") {
+            DepartureDetailsSummaryCard(
+                selection = selection,
+                departure = departure,
+                currentSystemTime = currentSystemTime,
+                showSecondsEnabled = showSecondsEnabled,
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                transformationSpec = transformationSpec,
+            )
+        }
+        item(key = "trip_details_platform") {
+            DetailValueRow(
+                label = "Boarding platform",
+                value = departure.boardingPlatformCompactLabel ?: "--",
+                valueColor = BOARDING_PLATFORM_COLOR,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "trip_details_arrival") {
+            DetailValueRow(
+                label = "Destination arrival",
+                value = routeRepo.formatDetailTime(departure.destinationArrivalTime),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "trip_details_line") {
+            DetailValueRow(
+                label = "Line",
+                value = departure.lineLabel,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "trip_details_board_header") {
+            ListHeader(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            ) {
+                Text("Departure board")
+            }
+        }
+        item(key = "trip_details_departure_scheduled") {
+            DetailValueRow(
+                label = "Scheduled",
+                value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.scheduledTime),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "trip_details_departure_predicted") {
+            DetailValueRow(
+                label = "Predicted",
+                value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.predictedTime),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "trip_details_delay") {
+            DetailValueRow(
+                label = "Delay",
+                value = routeRepo.formatDelaySeconds(departure.departureBoardDetails.delaySeconds),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "trip_details_origin_arrival_scheduled") {
+            DetailValueRow(
+                label = "Origin arrival scheduled",
+                value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.scheduledTime),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "trip_details_origin_arrival_predicted") {
+            DetailValueRow(
+                label = "Origin arrival predicted",
+                value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.predictedTime),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "trip_details_vehicle_header") {
+            ListHeader(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            ) {
+                Text("Vehicle position")
+            }
+        }
+        item(key = "trip_details_vehicle_status") {
+            departure.vehiclePositionDetails?.let { vehicleDetails ->
+                DetailValueRow(
+                    label = "Delay",
+                    value = routeRepo.formatDelaySeconds(vehicleDetails.delaySeconds),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                )
+            } ?: DetailValueRow(
+                label = "Status",
+                value = "Not available",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        departure.vehiclePositionDetails?.let { vehicleDetails ->
+            item(key = "trip_details_vehicle_origin_timestamp") {
+                DetailValueRow(
+                    label = "Origin timestamp",
+                    value = routeRepo.formatDetailTime(vehicleDetails.originTimestamp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransformingLazyColumnItemScope.DepartureDetailsSummaryCard(
+    selection: RouteSelection,
+    departure: RouteDeparture,
+    currentSystemTime: ZonedDateTime,
+    showSecondsEnabled: Boolean,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    transformationSpec: TransformationSpec,
+) {
+    Card(
+        onClick = onRefresh,
+        modifier = Modifier
+            .fillMaxWidth()
+            .transformedHeight(this, transformationSpec),
+        transformation = SurfaceTransformation(transformationSpec),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
     ) {
-        RoundScalingPage(state = listState) {
-            item {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(
                     text = departure.clockLabel(
                         showSeconds = showSecondsEnabled,
@@ -1473,161 +1454,42 @@ internal fun DepartureDetailsScreen(
                     ),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp),
-                    textAlign = TextAlign.Center,
                 )
-            }
-            item {
                 Text(
                     text = departure.activityStatusLabel(
                         referenceNow = currentSystemTime,
                         showSeconds = showSecondsEnabled,
                     ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = if (isRefreshing) "Refreshing live detail..." else "Tap refresh to update live detail.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp)
-                        .padding(top = 2.dp),
-                    textAlign = TextAlign.Center,
                 )
             }
-            item {
-                DetailValueRow(
-                    label = "Line",
-                    value = departure.lineLabel,
+            IconButton(
+                onClick = onRefresh,
+                modifier = Modifier.testTag(UiTestTags.TRIP_DETAILS_REFRESH_BUTTON),
+            ) {
+                Icon(
+                    painter = painterResource(id = android.R.drawable.stat_notify_sync),
+                    contentDescription = "Refresh trip details",
                 )
-            }
-            item {
-                DetailValueRow(
-                    label = "Boarding platform",
-                    value = departure.boardingPlatformCompactLabel ?: "--",
-                    valueColor = BOARDING_PLATFORM_COLOR,
-                )
-            }
-            item {
-                DetailValueRow(
-                    label = "Destination arrival",
-                    value = routeRepo.formatDetailTime(departure.destinationArrivalTime),
-                )
-            }
-            item {
-                DetailSectionTitle(
-                    title = "Departure board",
-                    topPadding = 12.dp,
-                )
-            }
-            item {
-                DetailValueRow(
-                    label = "Departure scheduled",
-                    value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.scheduledTime),
-                )
-            }
-            item {
-                DetailValueRow(
-                    label = "Departure predicted",
-                    value = routeRepo.formatDetailTime(departure.departureBoardDetails.departureTime.predictedTime),
-                )
-            }
-            item {
-                DetailValueRow(
-                    label = "Delay",
-                    value = routeRepo.formatDelaySeconds(departure.departureBoardDetails.delaySeconds),
-                )
-            }
-            item {
-                DetailValueRow(
-                    label = "Origin arrival scheduled",
-                    value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.scheduledTime),
-                )
-            }
-            item {
-                DetailValueRow(
-                    label = "Origin arrival predicted",
-                    value = routeRepo.formatDetailTime(departure.departureBoardDetails.originArrivalTime?.predictedTime),
-                )
-            }
-            item {
-                DetailSectionTitle(
-                    title = "Vehicle positions",
-                    topPadding = 12.dp,
-                )
-            }
-            item {
-                departure.vehiclePositionDetails?.let { vehicleDetails ->
-                    DetailValueRow(
-                        label = "Delay",
-                        value = routeRepo.formatDelaySeconds(vehicleDetails.delaySeconds),
-                    )
-                } ?: DetailValueRow(
-                    label = "Status",
-                    value = "Not available",
-                )
-            }
-            if (departure.vehiclePositionDetails != null) {
-                item {
-                    DetailValueRow(
-                        label = "origin_timestamp",
-                        value = routeRepo.formatDetailTime(departure.vehiclePositionDetails.originTimestamp),
-                    )
-                }
-            }
-            item {
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .testTag(UiTestTags.TRIP_DETAILS_CLOSE_BUTTON)
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp)
-                        .padding(top = 12.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
-                ) {
-                    Text("Close")
-                }
             }
         }
     }
 }
 
 @Composable
-private fun DetailSectionTitle(
-    title: String,
-    topPadding: androidx.compose.ui.unit.Dp,
-) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .padding(top = topPadding),
-        textAlign = TextAlign.Center,
-    )
-}
-
-@Composable
 private fun DetailValueRow(
     label: String,
     value: String,
+    modifier: Modifier = Modifier,
     valueColor: Color? = null,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .padding(top = 8.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(22.dp),
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
+    PanelSurface(modifier = modifier) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
@@ -1643,17 +1505,11 @@ private fun DetailValueRow(
 }
 
 @Composable
-private fun EmptyStateCard(message: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(22.dp),
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
+private fun EmptyStateCard(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    PanelSurface(modifier = modifier) {
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
@@ -1663,46 +1519,102 @@ private fun EmptyStateCard(message: String) {
 }
 
 @Composable
-private fun AutoUpdatesCard(
+private fun TransformingLazyColumnItemScope.AutoUpdatesCard(
     autoUpdatesEnabled: Boolean,
     onToggleAutoUpdates: () -> Unit,
+    transformationSpec: TransformationSpec,
 ) {
-    Column(
+    SwitchButton(
+        checked = autoUpdatesEnabled,
+        onCheckedChange = { onToggleAutoUpdates() },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                shape = RoundedCornerShape(24.dp),
+            .testTag(UiTestTags.BOARD_AUTO_UPDATES_SWITCH)
+            .transformedHeight(this, transformationSpec),
+        transformation = SurfaceTransformation(transformationSpec),
+        label = { Text("Auto updates") },
+        secondaryLabel = {
+            Text(
+                if (autoUpdatesEnabled) {
+                    "Refresh every 30 seconds on the board."
+                } else {
+                    "Pause automatic departure refreshes."
+                },
             )
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+        },
+    )
+}
+
+@Composable
+private fun VerifiedMatchCard(
+    verifiedMatchCount: Int,
+    onDecreaseVerifiedMatchCount: () -> Unit,
+    onIncreaseVerifiedMatchCount: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PanelSurface(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Text(
-            text = "Updates",
+            text = "Verified matches",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
         )
-        Button(
-            onClick = onToggleAutoUpdates,
+        Text(
+            text = verifiedMatchCount.toString(),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Text(
+            text = "Tune exact direction matching when live data is ambiguous.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp),
-            colors = if (autoUpdatesEnabled) {
-                ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-            } else {
-                ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                )
-            },
+                .padding(top = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(if (autoUpdatesEnabled) "Auto updates: On" else "Auto updates: Off")
+            Button(
+                onClick = onDecreaseVerifiedMatchCount,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(52.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(),
+            ) {
+                Text("-1")
+            }
+            Button(
+                onClick = onIncreaseVerifiedMatchCount,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(52.dp),
+            ) {
+                Text("+1")
+            }
         }
+    }
+}
+
+@Composable
+private fun PanelSurface(
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .background(
+                color = containerColor,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        content()
     }
 }
 
@@ -1740,33 +1652,31 @@ private fun snapshotStatusText(
 @WearPreviewFontScales
 @Composable
 fun DefaultPreview() {
-    val previewContext = LocalContext.current
     val previewSnapshot = remember { RouteRepository.previewSnapshot() }
-    val previewRepository = remember { RouteRepository(previewContext) }
 
     RouteTrackerTheme {
-        BoardScreen(
-            selection = previewSnapshot.selection,
-            departures = previewSnapshot.departures,
-            snapshot = previewSnapshot,
-            statusText = snapshotStatusText(
+        RouteTrackerAppScaffold {
+            BoardScreen(
+                selection = previewSnapshot.selection,
+                departures = previewSnapshot.departures,
                 snapshot = previewSnapshot,
+                statusText = snapshotStatusText(
+                    snapshot = previewSnapshot,
+                    autoUpdatesEnabled = true,
+                    isRefreshing = false,
+                    hasDepartures = previewSnapshot.departures.isNotEmpty(),
+                    updatedLabel = previewSnapshot.fetchedAt.format(PREVIEW_UPDATE_TIME_FORMATTER),
+                ),
+                currentSystemTime = previewSnapshot.fetchedAt,
+                showSecondsEnabled = false,
                 autoUpdatesEnabled = true,
                 isRefreshing = false,
-                hasDepartures = previewSnapshot.departures.isNotEmpty(),
-                updatedLabel = previewSnapshot.fetchedAt.format(PREVIEW_UPDATE_TIME_FORMATTER),
-            ),
-            routeRepo = previewRepository,
-            currentSystemTime = previewSnapshot.fetchedAt,
-            showSecondsEnabled = false,
-            autoUpdatesEnabled = true,
-            isRefreshing = false,
-            onOpenSettings = {},
-            onToggleAutoUpdates = {},
-            onOpenQuickRouteSwitch = {},
-            onOpenRouteSetup = {},
-            onOpenDepartureDetails = {},
-            onRefresh = {},
-        )
+                onOpenSettings = {},
+                onToggleAutoUpdates = {},
+                onOpenQuickRouteSwitch = {},
+                onOpenDepartureDetails = {},
+                onRefresh = {},
+            )
+        }
     }
 }

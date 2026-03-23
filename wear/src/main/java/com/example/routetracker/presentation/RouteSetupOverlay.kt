@@ -10,15 +10,11 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -28,28 +24,44 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
-import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnState
+import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
+import androidx.wear.compose.material3.Card
+import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.EdgeButton
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.RevealValue
+import androidx.wear.compose.material3.SurfaceTransformation
+import androidx.wear.compose.material3.SwipeToReveal
+import androidx.wear.compose.material3.SwipeToRevealDefaults
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.lazy.TransformationSpec
+import androidx.wear.compose.material3.lazy.transformedHeight
+import androidx.wear.compose.material3.rememberRevealState
 import com.example.routetracker.data.formatBoardingStopCount
 import com.example.routetracker.data.LineOption
-import com.example.routetracker.data.LineSelection
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.data.RouteSelection
 import com.example.routetracker.data.StationOption
 import com.example.routetracker.data.StopSelection
-import com.example.routetracker.data.TransitCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -97,7 +109,7 @@ internal fun RouteSetupScreen(
     var stationResults by remember { mutableStateOf<List<StationOption>>(emptyList()) }
     var lineResults by remember { mutableStateOf<List<LineOption>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
-    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
+    val listState = rememberTransformingLazyColumnState()
 
     suspend fun loadCatalog(forceRefresh: Boolean) {
         isCatalogLoading = true
@@ -189,133 +201,130 @@ internal fun RouteSetupScreen(
         }
     }
 
-    RoundScalingPage(state = listState) {
-        when (val currentPage = page) {
-            RouteSetupPage.Home -> {
-                routeSetupHomePage(
-                    draftSelection = draftSelection,
-                    favoriteRoutes = localFavorites,
-                    isEditingFavorite = editingFavoriteKey != null,
-                    isCatalogLoading = isCatalogLoading,
-                    catalogError = catalogError,
-                    onChooseOrigin = {
-                        stationQuery = ""
-                        page = RouteSetupPage.StationSearch(RouteEndpointTarget.ORIGIN)
-                    },
-                    onChooseDestination = {
-                        stationQuery = ""
-                        page = RouteSetupPage.StationSearch(RouteEndpointTarget.DESTINATION)
-                    },
-                    onChooseLine = {
-                        lineQuery = ""
-                        page = RouteSetupPage.LineSearch
-                    },
-                    onToggleFavorite = {
-                        coroutineScope.launch {
-                            withContext(Dispatchers.IO) {
-                                if (editingFavoriteKey != null) {
-                                    val savedSelection = routeRepo.updateFavoriteRoute(
-                                        originalStableKey = editingFavoriteKey!!,
-                                        selection = draftSelection,
-                                    )
-                                    editingFavoriteKey = savedSelection.stableKey
-                                } else {
-                                    routeRepo.toggleFavoriteRoute(draftSelection)
-                                }
+    when (val currentPage = page) {
+        RouteSetupPage.Home -> {
+            RouteSetupHomeScreen(
+                listState = listState,
+                draftSelection = draftSelection,
+                favoriteRoutes = localFavorites,
+                isEditingFavorite = editingFavoriteKey != null,
+                isCatalogLoading = isCatalogLoading,
+                catalogError = catalogError,
+                onChooseOrigin = {
+                    stationQuery = ""
+                    page = RouteSetupPage.StationSearch(RouteEndpointTarget.ORIGIN)
+                },
+                onChooseDestination = {
+                    stationQuery = ""
+                    page = RouteSetupPage.StationSearch(RouteEndpointTarget.DESTINATION)
+                },
+                onChooseLine = {
+                    lineQuery = ""
+                    page = RouteSetupPage.LineSearch
+                },
+                onToggleFavorite = {
+                    coroutineScope.launch {
+                        withContext(Dispatchers.IO) {
+                            if (editingFavoriteKey != null) {
+                                val savedSelection = routeRepo.updateFavoriteRoute(
+                                    originalStableKey = editingFavoriteKey!!,
+                                    selection = draftSelection,
+                                )
+                                editingFavoriteKey = savedSelection.stableKey
+                            } else {
+                                routeRepo.toggleFavoriteRoute(draftSelection)
                             }
-                            localFavorites = routeRepo.getFavoriteRoutes()
                         }
-                    },
-                    onApplyFavorite = { selection ->
-                        onApplySelection(selection)
-                    },
-                    onApplyRoute = {
-                        onApplySelection(draftSelection)
-                    },
-                    onRetryCatalog = {
-                        coroutineScope.launch {
-                            loadCatalog(forceRefresh = true)
-                        }
-                    },
-                    onClose = onDismiss,
-                )
-            }
+                        localFavorites = routeRepo.getFavoriteRoutes()
+                    }
+                },
+                onApplyFavorite = onApplySelection,
+                onApplyRoute = { onApplySelection(draftSelection) },
+                onRetryCatalog = {
+                    coroutineScope.launch {
+                        loadCatalog(forceRefresh = true)
+                    }
+                },
+            )
+        }
 
-            is RouteSetupPage.StationSearch -> {
-                routeStationSearchPage(
-                    target = currentPage.target,
-                    query = stationQuery,
-                    results = stationResults,
-                    isCatalogLoading = isCatalogLoading,
-                    catalogError = catalogError,
-                    onQueryChange = { stationQuery = it },
-                    onSelectStation = { station ->
-                        if (station.platforms.isEmpty()) {
-                            draftSelection = draftSelection.withEndpoint(
-                                target = currentPage.target,
-                                selection = station.resolveSelection(platformKey = null),
-                            )
-                            page = RouteSetupPage.Home
-                        } else {
-                            page = RouteSetupPage.PlatformPicker(
-                                target = currentPage.target,
-                                station = station,
-                            )
-                        }
-                    },
-                    onRetryCatalog = {
-                        coroutineScope.launch {
-                            loadCatalog(forceRefresh = true)
-                        }
-                    },
-                    onBack = {
-                        page = RouteSetupPage.Home
-                    },
-                )
-            }
-
-            is RouteSetupPage.PlatformPicker -> {
-                routePlatformPickerPage(
-                    target = currentPage.target,
-                    station = currentPage.station,
-                    onSelectPlatform = { platformKey ->
+        is RouteSetupPage.StationSearch -> {
+            RouteStationSearchScreen(
+                listState = listState,
+                target = currentPage.target,
+                query = stationQuery,
+                results = stationResults,
+                isCatalogLoading = isCatalogLoading,
+                catalogError = catalogError,
+                onQueryChange = { stationQuery = it },
+                onSelectStation = { station ->
+                    if (station.platforms.isEmpty()) {
                         draftSelection = draftSelection.withEndpoint(
                             target = currentPage.target,
-                            selection = currentPage.station.resolveSelection(platformKey),
+                            selection = station.resolveSelection(platformKey = null),
                         )
                         page = RouteSetupPage.Home
-                    },
-                    onBack = {
-                        page = RouteSetupPage.StationSearch(currentPage.target)
-                    },
-                )
-            }
+                    } else {
+                        page = RouteSetupPage.PlatformPicker(
+                            target = currentPage.target,
+                            station = station,
+                        )
+                    }
+                },
+                onRetryCatalog = {
+                    coroutineScope.launch {
+                        loadCatalog(forceRefresh = true)
+                    }
+                },
+                onBack = {
+                    page = RouteSetupPage.Home
+                },
+            )
+        }
 
-            RouteSetupPage.LineSearch -> {
-                routeLineSearchPage(
-                    query = lineQuery,
-                    results = lineResults,
-                    isCatalogLoading = isCatalogLoading,
-                    catalogError = catalogError,
-                    onQueryChange = { lineQuery = it },
-                    onSelectAnyLine = {
-                        draftSelection = draftSelection.copy(line = null)
-                        page = RouteSetupPage.Home
-                    },
-                    onSelectLine = { line ->
-                        draftSelection = draftSelection.copy(line = line.toSelection())
-                        page = RouteSetupPage.Home
-                    },
-                    onRetryCatalog = {
-                        coroutineScope.launch {
-                            loadCatalog(forceRefresh = true)
-                        }
-                    },
-                    onBack = {
-                        page = RouteSetupPage.Home
-                    },
-                )
-            }
+        is RouteSetupPage.PlatformPicker -> {
+            RoutePlatformPickerScreen(
+                listState = listState,
+                target = currentPage.target,
+                station = currentPage.station,
+                onSelectPlatform = { platformKey ->
+                    draftSelection = draftSelection.withEndpoint(
+                        target = currentPage.target,
+                        selection = currentPage.station.resolveSelection(platformKey),
+                    )
+                    page = RouteSetupPage.Home
+                },
+                onBack = {
+                    page = RouteSetupPage.StationSearch(currentPage.target)
+                },
+            )
+        }
+
+        RouteSetupPage.LineSearch -> {
+            RouteLineSearchScreen(
+                listState = listState,
+                query = lineQuery,
+                results = lineResults,
+                isCatalogLoading = isCatalogLoading,
+                catalogError = catalogError,
+                onQueryChange = { lineQuery = it },
+                onSelectAnyLine = {
+                    draftSelection = draftSelection.copy(line = null)
+                    page = RouteSetupPage.Home
+                },
+                onSelectLine = { line ->
+                    draftSelection = draftSelection.copy(line = line.toSelection())
+                    page = RouteSetupPage.Home
+                },
+                onRetryCatalog = {
+                    coroutineScope.launch {
+                        loadCatalog(forceRefresh = true)
+                    }
+                },
+                onBack = {
+                    page = RouteSetupPage.Home
+                },
+            )
         }
     }
 }
@@ -340,135 +349,96 @@ internal fun QuickRouteSwitchScreen(
     onDeleteFavorite: (RouteSelection) -> Unit,
     onOpenRouteSetup: () -> Unit,
 ) {
-    var selectedFavoriteForMenu by remember(favoriteRoutes) { mutableStateOf<RouteSelection?>(null) }
-    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
+    val listState = rememberTransformingLazyColumnState()
+    val coroutineScope = rememberCoroutineScope()
 
-    BackHandler(enabled = selectedFavoriteForMenu != null) {
-        selectedFavoriteForMenu = null
-    }
-
-    RoundScalingPage(state = listState) {
-        item {
-            Column(
+    RouteTrackerListScreen(
+        state = listState,
+        edgeButton = {
+            EdgeButton(
+                onClick = onOpenRouteSetup,
+                modifier = Modifier.testTag(UiTestTags.QUICK_SWITCH_NEW_ROUTE_BUTTON),
+            ) {
+                Text("New route")
+            }
+        },
+    ) { transformationSpec ->
+        item(key = "quick_switch_current") {
+            Card(
+                onClick = { onApplyFavorite(currentSelection) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON)
-                    .pointerInput(currentSelection.stableKey) {
-                        detectTapGestures(
-                            onDoubleTap = {
-                                onSwapRoute(currentSelection.swappedEndpoints())
-                            },
-                        )
-                    },
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
             ) {
                 Text(
-                    text = "Route switch",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp),
-                    textAlign = TextAlign.Center,
+                    text = "Current route",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     text = currentSelection.routeSummaryLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                Text(
+                    text = currentSelection.favoriteSummaryLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp)
-                        .padding(top = 2.dp),
-                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }
-
-        val favoriteForMenu = selectedFavoriteForMenu
-        if (favoriteForMenu != null) {
-            item {
-                RouteSetupInfoCard(
-                    title = "Favorite options",
-                    value = favoriteForMenu.routeSummaryWithPlatforms,
-                    topPadding = 10.dp,
-                )
+        item(key = "quick_switch_swap") {
+            Button(
+                onClick = { onSwapRoute(currentSelection.swappedEndpoints()) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON)
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            ) {
+                Text("Swap direction")
             }
-            item {
-                ActionButton(
-                    label = "Edit favorite",
-                    topPadding = 10.dp,
-                    emphasize = true,
-                    onClick = {
-                        selectedFavoriteForMenu = null
-                        onEditFavorite(favoriteForMenu)
-                    },
-                )
-            }
-            item {
-                ActionButton(
-                    label = "Delete favorite",
-                    topPadding = 8.dp,
-                    onClick = {
-                        selectedFavoriteForMenu = null
-                        onDeleteFavorite(favoriteForMenu)
-                    },
-                )
-            }
-            item {
-                ActionButton(
-                    label = "Cancel",
-                    topPadding = 8.dp,
-                    onClick = {
-                        selectedFavoriteForMenu = null
-                    },
-                )
-            }
-        } else if (favoriteRoutes.isEmpty()) {
-            item {
+        }
+        item(key = "quick_switch_hint") {
+            RouteSetupInfoCard(
+                title = "Favorites",
+                value = "Tap to apply. Swipe left for edit and delete.",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        if (favoriteRoutes.isEmpty()) {
+            item(key = "quick_switch_empty") {
                 RouteSetupInfoCard(
                     title = "No favorites",
                     value = "Save routes in the full setup, then switch them from here.",
-                    topPadding = 10.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
                 )
             }
         } else {
-            item {
-                Text(
-                    text = "Favorites",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp)
-                        .padding(top = 10.dp),
-                    textAlign = TextAlign.Center,
+            items(
+                items = favoriteRoutes,
+                key = { favorite -> favorite.stableKey },
+            ) { favorite ->
+                FavoriteQuickSwitchRow(
+                    selection = favorite,
+                    isCurrent = favorite.stableKey == currentSelection.stableKey,
+                    listState = listState,
+                    coroutineScope = coroutineScope,
+                    transformationSpec = transformationSpec,
+                    onApplyFavorite = { onApplyFavorite(favorite) },
+                    onEditFavorite = { onEditFavorite(favorite) },
+                    onDeleteFavorite = { onDeleteFavorite(favorite) },
                 )
             }
-            favoriteRoutes.forEach { favorite ->
-                item {
-                    FavoriteRouteCard(
-                        selection = favorite,
-                        subtitle = buildString {
-                            append(favorite.favoriteSummaryLabel)
-                            if (favorite.stableKey == currentSelection.stableKey) {
-                                append(" · Current")
-                            }
-                        },
-                        onClick = { onApplyFavorite(favorite) },
-                        onLongClick = {
-                            selectedFavoriteForMenu = favorite
-                        },
-                    )
-                }
-            }
-        }
-
-        item {
-            ActionButton(
-                label = "New route",
-                topPadding = 12.dp,
-                emphasize = true,
-                testTag = UiTestTags.QUICK_SWITCH_NEW_ROUTE_BUTTON,
-                onClick = onOpenRouteSetup,
-            )
         }
     }
 }
@@ -489,27 +459,27 @@ internal fun RouteSetupHomePage(
     onRetryCatalog: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
-    RoundScalingPage(state = listState) {
-        routeSetupHomePage(
-            draftSelection = draftSelection,
-            favoriteRoutes = favoriteRoutes,
-            isEditingFavorite = isEditingFavorite,
-            isCatalogLoading = isCatalogLoading,
-            catalogError = catalogError,
-            onChooseOrigin = onChooseOrigin,
-            onChooseDestination = onChooseDestination,
-            onChooseLine = onChooseLine,
-            onToggleFavorite = onToggleFavorite,
-            onApplyFavorite = onApplyFavorite,
-            onApplyRoute = onApplyRoute,
-            onRetryCatalog = onRetryCatalog,
-            onClose = onClose,
-        )
-    }
+    val listState = rememberTransformingLazyColumnState()
+    RouteSetupHomeScreen(
+        listState = listState,
+        draftSelection = draftSelection,
+        favoriteRoutes = favoriteRoutes,
+        isEditingFavorite = isEditingFavorite,
+        isCatalogLoading = isCatalogLoading,
+        catalogError = catalogError,
+        onChooseOrigin = onChooseOrigin,
+        onChooseDestination = onChooseDestination,
+        onChooseLine = onChooseLine,
+        onToggleFavorite = onToggleFavorite,
+        onApplyFavorite = onApplyFavorite,
+        onApplyRoute = onApplyRoute,
+        onRetryCatalog = onRetryCatalog,
+    )
 }
 
-private fun ScalingLazyListScope.routeSetupHomePage(
+@Composable
+private fun RouteSetupHomeScreen(
+    listState: TransformingLazyColumnState,
     draftSelection: RouteSelection,
     favoriteRoutes: List<RouteSelection>,
     isEditingFavorite: Boolean,
@@ -522,136 +492,151 @@ private fun ScalingLazyListScope.routeSetupHomePage(
     onApplyFavorite: (RouteSelection) -> Unit,
     onApplyRoute: () -> Unit,
     onRetryCatalog: () -> Unit,
-    onClose: () -> Unit,
 ) {
     val isFavorite = favoriteRoutes.any { it.stableKey == draftSelection.stableKey }
 
-    item {
-        Text(
-            text = "Route setup",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp),
-            textAlign = TextAlign.Center,
-        )
-    }
-    item {
-        Text(
-            text = "Direct routes only",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp)
-                .padding(top = 2.dp),
-            textAlign = TextAlign.Center,
-        )
-    }
-
-    if (isCatalogLoading) {
-        item {
-            RouteSetupInfoCard(
-                title = "Syncing stops",
-                value = "Updating local stop and line suggestions.",
-                topPadding = 10.dp,
-            )
-        }
-    } else if (catalogError != null) {
-        item {
-            RouteSetupInfoCard(
-                title = "Catalog error",
-                value = catalogError,
-                topPadding = 10.dp,
-            )
-        }
-        item {
-            ActionButton(
-                label = "Retry sync",
-                topPadding = 8.dp,
-                onClick = onRetryCatalog,
-            )
-        }
-    }
-
-    item {
-        RouteSetupValueCard(
-            title = "From",
-            value = draftSelection.origin.displayLabel,
-            topPadding = 10.dp,
-            onClick = onChooseOrigin,
-        )
-    }
-    item {
-        RouteSetupValueCard(
-            title = "To",
-            value = draftSelection.destination.displayLabel,
-            topPadding = 8.dp,
-            onClick = onChooseDestination,
-        )
-    }
-    item {
-        RouteSetupValueCard(
-            title = "Line",
-            value = draftSelection.line?.displayLabel ?: "Any line",
-            topPadding = 8.dp,
-            onClick = onChooseLine,
-        )
-    }
-
-    item {
-        ActionButton(
-            label = when {
-                isEditingFavorite -> "Update favorite"
-                isFavorite -> "Remove favorite"
-                else -> "Save favorite"
-            },
-            topPadding = 12.dp,
-            onClick = onToggleFavorite,
-        )
-    }
-    item {
-        ActionButton(
-            label = "Apply route",
-            topPadding = 8.dp,
-            emphasize = true,
-            onClick = onApplyRoute,
-        )
-    }
-
-    if (favoriteRoutes.isNotEmpty()) {
-        item {
-            Text(
-                text = "Favorites",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    RouteTrackerListScreen(
+        state = listState,
+        edgeButton = {
+            EdgeButton(
+                onClick = onApplyRoute,
+                modifier = Modifier.testTag(UiTestTags.ROUTE_SETUP_APPLY_BUTTON),
+            ) {
+                Text("Apply route")
+            }
+        },
+    ) { transformationSpec ->
+        item(key = "route_setup_header") {
+            ListHeader(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(top = 12.dp),
-                textAlign = TextAlign.Center,
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            ) {
+                Text("Route setup")
+            }
+        }
+        item(key = "route_setup_intro") {
+            RouteSetupInfoCard(
+                title = "Direct routes only",
+                value = "Pick origin, destination, and optional line for the live board.",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
             )
         }
-        favoriteRoutes.forEach { favorite ->
-            item {
+
+        if (isCatalogLoading) {
+            item(key = "route_setup_loading") {
+                RouteSetupInfoCard(
+                    title = "Syncing stops",
+                    value = "Updating local stop and line suggestions.",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                )
+            }
+        } else if (catalogError != null) {
+            item(key = "route_setup_error") {
+                RouteSetupInfoCard(
+                    title = "Catalog error",
+                    value = catalogError,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                )
+            }
+            item(key = "route_setup_retry") {
+                ActionButton(
+                    label = "Retry sync",
+                    onClick = onRetryCatalog,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
+                )
+            }
+        }
+
+        item(key = "route_setup_origin") {
+            RouteSetupValueCard(
+                title = "From",
+                value = draftSelection.origin.displayLabel,
+                onClick = onChooseOrigin,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            )
+        }
+        item(key = "route_setup_destination") {
+            RouteSetupValueCard(
+                title = "To",
+                value = draftSelection.destination.displayLabel,
+                onClick = onChooseDestination,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            )
+        }
+        item(key = "route_setup_line") {
+            RouteSetupValueCard(
+                title = "Line",
+                value = draftSelection.line?.displayLabel ?: "Any line",
+                onClick = onChooseLine,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            )
+        }
+        item(key = "route_setup_favorite_toggle") {
+            ActionButton(
+                label = when {
+                    isEditingFavorite -> "Update favorite"
+                    isFavorite -> "Remove favorite"
+                    else -> "Save favorite"
+                },
+                onClick = onToggleFavorite,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            )
+        }
+
+        if (favoriteRoutes.isNotEmpty()) {
+            item(key = "route_setup_favorites_header") {
+                ListHeader(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
+                ) {
+                    Text("Saved routes")
+                }
+            }
+            items(
+                items = favoriteRoutes,
+                key = { favorite -> favorite.stableKey },
+            ) { favorite ->
                 FavoriteRouteCard(
                     selection = favorite,
                     onClick = { onApplyFavorite(favorite) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
+                    transformation = SurfaceTransformation(transformationSpec),
                 )
             }
         }
     }
-
-    item {
-        ActionButton(
-            label = "Close",
-            topPadding = 12.dp,
-            onClick = onClose,
-        )
-    }
 }
 
-private fun ScalingLazyListScope.routeStationSearchPage(
+@Composable
+private fun RouteStationSearchScreen(
+    listState: TransformingLazyColumnState,
     target: RouteEndpointTarget,
     query: String,
     results: List<StationOption>,
@@ -662,152 +647,182 @@ private fun ScalingLazyListScope.routeStationSearchPage(
     onRetryCatalog: () -> Unit,
     onBack: () -> Unit,
 ) {
-    item {
-        Text(
-            text = if (target == RouteEndpointTarget.ORIGIN) "Choose origin" else "Choose destination",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp),
-            textAlign = TextAlign.Center,
-        )
-    }
-    item {
-        SearchFieldCard(
-            value = query,
-            placeholder = "Type stop name",
-            topPadding = 10.dp,
-            onValueChange = onQueryChange,
-        )
-    }
-
-    when {
-        isCatalogLoading -> {
-            item {
-                RouteSetupInfoCard(
-                    title = "Loading",
-                    value = "Stops and lines are syncing.",
-                    topPadding = 10.dp,
-                )
+    RouteTrackerListScreen(
+        state = listState,
+        timeText = {},
+        edgeButton = {
+            EdgeButton(onClick = onBack) {
+                Text("Back")
+            }
+        },
+    ) { transformationSpec ->
+        item(key = "route_station_search_header") {
+            ListHeader(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            ) {
+                Text(if (target == RouteEndpointTarget.ORIGIN) "Choose origin" else "Choose destination")
             }
         }
-
-        catalogError != null -> {
-            item {
-                RouteSetupInfoCard(
-                    title = "Catalog error",
-                    value = catalogError,
-                    topPadding = 10.dp,
-                )
-            }
-            item {
-                ActionButton(
-                    label = "Retry sync",
-                    topPadding = 8.dp,
-                    onClick = onRetryCatalog,
-                )
-            }
+        item(key = "route_station_search_field") {
+            SearchFieldCard(
+                value = query,
+                placeholder = "Type stop name",
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
         }
 
-        query.isBlank() -> {
-            item {
-                RouteSetupInfoCard(
-                    title = "Search",
-                    value = "Type at least one letter. Accent-insensitive search is enabled.",
-                    topPadding = 10.dp,
-                )
+        when {
+            isCatalogLoading -> {
+                item(key = "route_station_search_loading") {
+                    RouteSetupInfoCard(
+                        title = "Loading",
+                        value = "Stops and lines are syncing.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                    )
+                }
             }
-        }
 
-        results.isEmpty() -> {
-            item {
-                RouteSetupInfoCard(
-                    title = "No matches",
-                    value = "Try a shorter or broader stop name.",
-                    topPadding = 10.dp,
-                )
+            catalogError != null -> {
+                item(key = "route_station_search_error") {
+                    RouteSetupInfoCard(
+                        title = "Catalog error",
+                        value = catalogError,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                    )
+                }
+                item(key = "route_station_search_retry") {
+                    ActionButton(
+                        label = "Retry sync",
+                        onClick = onRetryCatalog,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                        transformation = SurfaceTransformation(transformationSpec),
+                    )
+                }
             }
-        }
 
-        else -> {
-            results.forEach { station ->
-                item {
+            query.isBlank() -> {
+                item(key = "route_station_search_hint") {
+                    RouteSetupInfoCard(
+                        title = "Search",
+                        value = "Type at least one letter. Accent-insensitive search is enabled.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                    )
+                }
+            }
+
+            results.isEmpty() -> {
+                item(key = "route_station_search_empty") {
+                    RouteSetupInfoCard(
+                        title = "No matches",
+                        value = "Try a shorter or broader stop name.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                    )
+                }
+            }
+
+            else -> {
+                items(
+                    items = results,
+                    key = { station -> station.stationKey },
+                ) { station ->
                     SuggestionCard(
                         title = station.stationName,
                         subtitle = station.searchSubtitle,
                         onClick = { onSelectStation(station) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                        transformation = SurfaceTransformation(transformationSpec),
                     )
                 }
             }
         }
     }
-
-    item {
-        ActionButton(
-            label = "Back",
-            topPadding = 12.dp,
-            onClick = onBack,
-        )
-    }
 }
 
-private fun ScalingLazyListScope.routePlatformPickerPage(
+@Composable
+private fun RoutePlatformPickerScreen(
+    listState: TransformingLazyColumnState,
     target: RouteEndpointTarget,
     station: StationOption,
     onSelectPlatform: (String?) -> Unit,
     onBack: () -> Unit,
 ) {
-    item {
-        Text(
-            text = if (target == RouteEndpointTarget.ORIGIN) "Origin platform" else "Destination platform",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp),
-            textAlign = TextAlign.Center,
-        )
-    }
-    item {
-        Text(
-            text = station.stationName,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp)
-                .padding(top = 4.dp),
-            textAlign = TextAlign.Center,
-        )
-    }
-
-    item {
-        SuggestionCard(
-            title = "Any platform",
-            subtitle = station.anyPlatformSubtitle,
-            topPadding = 10.dp,
-            onClick = { onSelectPlatform(null) },
-        )
-    }
-    station.platforms.forEach { platform ->
-        item {
+    RouteTrackerListScreen(
+        state = listState,
+        timeText = {},
+        edgeButton = {
+            EdgeButton(onClick = onBack) {
+                Text("Back")
+            }
+        },
+    ) { transformationSpec ->
+        item(key = "route_platform_picker_header") {
+            ListHeader(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            ) {
+                Text(if (target == RouteEndpointTarget.ORIGIN) "Origin platform" else "Destination platform")
+            }
+        }
+        item(key = "route_platform_picker_station") {
+            RouteSetupInfoCard(
+                title = "Station",
+                value = station.stationName,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "route_platform_picker_any") {
+            SuggestionCard(
+                title = "Any platform",
+                subtitle = station.anyPlatformSubtitle,
+                onClick = { onSelectPlatform(null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            )
+        }
+        items(
+            items = station.platforms,
+            key = { platform -> platform.platformKey },
+        ) { platform ->
             SuggestionCard(
                 title = platform.label,
                 subtitle = formatBoardingStopCount(platform.stopIds.size),
                 onClick = { onSelectPlatform(platform.platformKey) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
             )
         }
     }
-
-    item {
-        ActionButton(
-            label = "Back",
-            topPadding = 12.dp,
-            onClick = onBack,
-        )
-    }
 }
 
-private fun ScalingLazyListScope.routeLineSearchPage(
+@Composable
+private fun RouteLineSearchScreen(
+    listState: TransformingLazyColumnState,
     query: String,
     results: List<LineOption>,
     isCatalogLoading: Boolean,
@@ -818,91 +833,111 @@ private fun ScalingLazyListScope.routeLineSearchPage(
     onRetryCatalog: () -> Unit,
     onBack: () -> Unit,
 ) {
-    item {
-        Text(
-            text = "Choose line",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp),
-            textAlign = TextAlign.Center,
-        )
-    }
-    item {
-        SearchFieldCard(
-            value = query,
-            placeholder = "Type line number or name",
-            topPadding = 10.dp,
-            onValueChange = onQueryChange,
-        )
-    }
-
-    item {
-        SuggestionCard(
-            title = "Any line",
-            subtitle = "Show the next direct tram regardless of line.",
-            topPadding = 10.dp,
-            onClick = onSelectAnyLine,
-        )
-    }
-
-    when {
-        isCatalogLoading -> {
-            item {
-                RouteSetupInfoCard(
-                    title = "Loading",
-                    value = "Lines are syncing.",
-                    topPadding = 8.dp,
-                )
+    RouteTrackerListScreen(
+        state = listState,
+        timeText = {},
+        edgeButton = {
+            EdgeButton(onClick = onBack) {
+                Text("Back")
+            }
+        },
+    ) { transformationSpec ->
+        item(key = "route_line_search_header") {
+            ListHeader(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            ) {
+                Text("Choose line")
             }
         }
-
-        catalogError != null -> {
-            item {
-                RouteSetupInfoCard(
-                    title = "Catalog error",
-                    value = catalogError,
-                    topPadding = 8.dp,
-                )
-            }
-            item {
-                ActionButton(
-                    label = "Retry sync",
-                    topPadding = 8.dp,
-                    onClick = onRetryCatalog,
-                )
-            }
+        item(key = "route_line_search_field") {
+            SearchFieldCard(
+                value = query,
+                placeholder = "Type line number or name",
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+            )
+        }
+        item(key = "route_line_any") {
+            SuggestionCard(
+                title = "Any line",
+                subtitle = "Show the next direct tram regardless of line.",
+                onClick = onSelectAnyLine,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .transformedHeight(this, transformationSpec),
+                transformation = SurfaceTransformation(transformationSpec),
+            )
         }
 
-        results.isEmpty() -> {
-            item {
-                RouteSetupInfoCard(
-                    title = "No matches",
-                    value = "Try a shorter line query.",
-                    topPadding = 8.dp,
-                )
+        when {
+            isCatalogLoading -> {
+                item(key = "route_line_loading") {
+                    RouteSetupInfoCard(
+                        title = "Loading",
+                        value = "Lines are syncing.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                    )
+                }
             }
-        }
 
-        else -> {
-            results.forEach { line ->
-                item {
+            catalogError != null -> {
+                item(key = "route_line_error") {
+                    RouteSetupInfoCard(
+                        title = "Catalog error",
+                        value = catalogError,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                    )
+                }
+                item(key = "route_line_retry") {
+                    ActionButton(
+                        label = "Retry sync",
+                        onClick = onRetryCatalog,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                        transformation = SurfaceTransformation(transformationSpec),
+                    )
+                }
+            }
+
+            results.isEmpty() -> {
+                item(key = "route_line_empty") {
+                    RouteSetupInfoCard(
+                        title = "No matches",
+                        value = "Try a shorter line query.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                    )
+                }
+            }
+
+            else -> {
+                items(
+                    items = results,
+                    key = { line -> line.displayLabel },
+                ) { line ->
                     SuggestionCard(
                         title = line.displayLabel,
                         subtitle = line.longName ?: "Direct departures on line ${line.shortName}",
                         onClick = { onSelectLine(line) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                        transformation = SurfaceTransformation(transformationSpec),
                     )
                 }
             }
         }
-    }
-
-    item {
-        ActionButton(
-            label = "Back",
-            topPadding = 12.dp,
-            onClick = onBack,
-        )
     }
 }
 
@@ -910,23 +945,13 @@ private fun ScalingLazyListScope.routeLineSearchPage(
 private fun SearchFieldCard(
     value: String,
     placeholder: String,
-    topPadding: androidx.compose.ui.unit.Dp,
     onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val hintColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .padding(top = topPadding)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(22.dp),
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
+    RouteSetupPanel(modifier = modifier) {
         Text(
             text = placeholder,
             style = MaterialTheme.typography.bodySmall,
@@ -987,14 +1012,16 @@ private fun SearchFieldCard(
 private fun RouteSetupValueCard(
     title: String,
     value: String,
-    topPadding: androidx.compose.ui.unit.Dp,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    transformation: SurfaceTransformation? = null,
 ) {
     SuggestionCard(
         title = title,
         subtitle = value,
-        topPadding = topPadding,
         onClick = onClick,
+        modifier = modifier,
+        transformation = transformation,
     )
 }
 
@@ -1003,15 +1030,16 @@ private fun FavoriteRouteCard(
     selection: RouteSelection,
     subtitle: String = selection.favoriteSummaryLabel,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    transformation: SurfaceTransformation? = null,
 ) {
     SuggestionCard(
         title = selection.routeSummaryLabel,
         subtitle = subtitle,
-        topPadding = 8.dp,
         testTag = UiTestTags.favoriteRouteCard(selection.stableKey),
         onClick = onClick,
-        onLongClick = onLongClick,
+        modifier = modifier,
+        transformation = transformation,
     )
 }
 
@@ -1019,19 +1047,9 @@ private fun FavoriteRouteCard(
 private fun RouteSetupInfoCard(
     title: String,
     value: String,
-    topPadding: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .padding(top = topPadding)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(22.dp),
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
+    RouteSetupPanel(modifier = modifier) {
         Text(
             text = title,
             style = MaterialTheme.typography.bodySmall,
@@ -1050,32 +1068,20 @@ private fun RouteSetupInfoCard(
 private fun SuggestionCard(
     title: String,
     subtitle: String,
-    topPadding: androidx.compose.ui.unit.Dp = 8.dp,
     testTag: String? = null,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    transformation: SurfaceTransformation? = null,
 ) {
-    Column(
+    Card(
+        onClick = onClick,
         modifier = Modifier
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .padding(top = topPadding)
-            .background(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(22.dp),
-            )
-            .then(
-                if (onLongClick != null) {
-                    Modifier.combinedClickable(
-                        onClick = onClick,
-                        onLongClick = onLongClick,
-                    )
-                } else {
-                    Modifier.clickable(onClick = onClick)
-                }
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .then(modifier),
+        transformation = transformation,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
     ) {
         Text(
             text = title,
@@ -1094,18 +1100,17 @@ private fun SuggestionCard(
 @Composable
 private fun ActionButton(
     label: String,
-    topPadding: androidx.compose.ui.unit.Dp,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    transformation: SurfaceTransformation? = null,
     emphasize: Boolean = false,
     testTag: String? = null,
-    onClick: () -> Unit,
 ) {
     Button(
         onClick = onClick,
         modifier = Modifier
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .padding(top = topPadding),
+            .then(modifier),
         colors = if (emphasize) {
             ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -1117,7 +1122,115 @@ private fun ActionButton(
                 contentColor = MaterialTheme.colorScheme.onSurface,
             )
         },
+        transformation = transformation,
     ) {
         Text(label)
+    }
+}
+
+@Composable
+private fun TransformingLazyColumnItemScope.FavoriteQuickSwitchRow(
+    selection: RouteSelection,
+    isCurrent: Boolean,
+    listState: TransformingLazyColumnState,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    transformationSpec: TransformationSpec,
+    onApplyFavorite: () -> Unit,
+    onEditFavorite: () -> Unit,
+    onDeleteFavorite: () -> Unit,
+) {
+    val revealState = rememberRevealState()
+
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress && revealState.currentValue != RevealValue.Covered) {
+            coroutineScope.launch {
+                revealState.animateTo(RevealValue.Covered)
+            }
+        }
+    }
+
+    SwipeToReveal(
+        primaryAction = {
+            PrimaryActionButton(
+                onClick = onDeleteFavorite,
+                icon = {
+                    Icon(
+                        painter = painterResource(id = android.R.drawable.ic_menu_delete),
+                        contentDescription = "Delete favorite",
+                    )
+                },
+                text = { Text("Delete") },
+                modifier = Modifier
+                    .height(SwipeToRevealDefaults.LargeActionButtonHeight)
+                    .testTag(UiTestTags.favoriteRouteDeleteAction(selection.stableKey)),
+            )
+        },
+        secondaryAction = {
+            SecondaryActionButton(
+                onClick = onEditFavorite,
+                icon = {
+                    Icon(
+                        painter = painterResource(id = android.R.drawable.ic_menu_edit),
+                        contentDescription = "Edit favorite",
+                    )
+                },
+                modifier = Modifier
+                    .height(SwipeToRevealDefaults.LargeActionButtonHeight)
+                    .testTag(UiTestTags.favoriteRouteEditAction(selection.stableKey)),
+            )
+        },
+        onSwipePrimaryAction = onDeleteFavorite,
+        revealState = revealState,
+        modifier = Modifier
+            .transformedHeight(this, transformationSpec)
+            .graphicsLayer {
+                with(transformationSpec) {
+                    applyContainerTransformation(scrollProgress)
+                }
+                compositingStrategy = CompositingStrategy.ModulateAlpha
+                clip = false
+            },
+    ) {
+        FavoriteRouteCard(
+            selection = selection,
+            subtitle = buildString {
+                append(selection.favoriteSummaryLabel)
+                if (isCurrent) {
+                    append(" · Current")
+                }
+            },
+            onClick = onApplyFavorite,
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction("Edit favorite") {
+                            onEditFavorite()
+                            true
+                        },
+                        CustomAccessibilityAction("Delete favorite") {
+                            onDeleteFavorite()
+                            true
+                        },
+                    )
+                },
+        )
+    }
+}
+
+@Composable
+private fun RouteSetupPanel(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        content()
     }
 }

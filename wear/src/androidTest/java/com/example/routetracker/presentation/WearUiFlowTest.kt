@@ -186,7 +186,7 @@ class WearUiFlowTest {
         }
 
         composeRule.onNodeWithTag(UiTestTags.favoriteRouteCard(favorite.stableKey))
-            .performTouchInput { swipeLeft() }
+            .performTouchInput { swipeLeft(startX = right - 1f, endX = centerX, durationMillis = 300) }
 
         composeRule.onAllNodesWithTag(
             UiTestTags.favoriteRouteEditAction(favorite.stableKey),

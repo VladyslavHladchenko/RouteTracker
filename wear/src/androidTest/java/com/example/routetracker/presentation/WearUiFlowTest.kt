@@ -2,10 +2,10 @@ package com.example.routetracker.presentation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -188,14 +188,14 @@ class WearUiFlowTest {
         composeRule.onNodeWithTag(UiTestTags.favoriteRouteCard(favorite.stableKey))
             .performTouchInput { swipeLeft() }
 
-        composeRule.onNodeWithTag(
+        composeRule.onAllNodesWithTag(
             UiTestTags.favoriteRouteEditAction(favorite.stableKey),
             useUnmergedTree = true,
-        ).assertExists()
-        composeRule.onNodeWithTag(
+        ).assertCountEquals(1)
+        composeRule.onAllNodesWithTag(
             UiTestTags.favoriteRouteDeleteAction(favorite.stableKey),
             useUnmergedTree = true,
-        ).assertExists()
+        ).assertCountEquals(1)
     }
 
     @Test

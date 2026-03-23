@@ -24,6 +24,7 @@ gradlew-local.ps1
 .android-local/
 .codex/
 .codex-artifacts/
+.codex-tmp/
 build/
 .tmp-*
 

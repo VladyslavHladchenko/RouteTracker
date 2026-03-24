@@ -27,10 +27,10 @@ The activity uses Wear navigation with swipe-dismissable screens.
 
 Screen flow:
 
-- `Board`: the live departures board
-- `Settings`: opened from the gear button above the board
-- `Quick switch`: opened by tapping the selected-route header
-- `Route setup`: opened by long-pressing the selected-route header or from `Quick switch`
+- `Board`: the live departures board with a compact route summary, visible refresh action, and a `Change route` edge button
+- `Settings`: opened from the in-list `Settings` button on the board
+- `Quick switch`: opened from the board summary card or the `Change route` edge button
+- `Route setup`: opened from `New route` in `Quick switch`
 - `Trip details`: opened by tapping one departure row
 
 Swipe-dismiss behavior:
@@ -42,14 +42,14 @@ The board opens first.
 
 Visible immediately:
 
-- current system clock on the curved left edge
-- selected route header, which opens quick-switch on tap and full route setup on long-press
+- system time via Wear `TimeText`
+- route summary card with route, line, live-status metadata, and a visible refresh action
 - next direct departures
-- refresh button
+- `Change route` edge button
 
-Above the main board, available by swiping down:
+Further down the board list:
 
-- settings button
+- `Settings`
 - auto-updates toggle
 
 Platform-aware departures:
@@ -67,9 +67,9 @@ Home step:
 - current origin
 - current destination
 - current line or `Any line`
-- favorite toggle
-- `Apply route`
-- favorite routes list for one-tap reuse
+- `Save favorite` / `Remove favorite` / `Update favorite`
+- `Apply route` edge button
+- saved routes list for one-tap reuse
 
 Focused sub-pages:
 
@@ -93,8 +93,9 @@ Favorites are stored locally and shown in both quick-switch and route setup.
 Current behavior:
 
 - `Save favorite` adds the current route setup
+- quick switch shows the current route, a visible `Swap direction` action, favorites, and a `New route` edge button
 - tapping a favorite in quick-switch applies it immediately
-- long-pressing a favorite in quick-switch opens `Edit favorite` / `Delete favorite`
+- swiping left on a favorite in quick-switch reveals `Edit favorite` / `Delete favorite`
 - favorites are de-duplicated by origin, destination, platform filters, and line
 - favorites are capped at `8`
 
@@ -524,10 +525,14 @@ Screenshot baselines:
 
 - screenshot tests live in `wear/src/test/java/com/example/routetracker/presentation/WearScreenshotTest.kt`
 - recorded baselines live in `wear/src/test/screenshots/`
+- screenshots render inside the real Wear app scaffold and a round viewport mask so bezel clipping is visible in CI artifacts
 - current baseline set covers:
   - board with departures
+  - board with platform delay
+  - board with pinned platform delay
   - board loading state
   - quick switch
+  - API-key settings
   - route setup home
   - trip details
 
@@ -547,11 +552,14 @@ Behavior tests:
 
 - Compose UI flow tests live in `wear/src/androidTest/java/com/example/routetracker/presentation/WearUiFlowTest.kt`
 - current flow coverage includes:
-  - header tap / long-press behavior
+  - visible board actions for `Change route` and refresh
   - board row platform and delay rendering
   - quick-switch favorite ordering
-  - favorite long-press menu
-  - trip-details close action
+  - quick-switch `Swap direction`
+  - favorite swipe-to-reveal edit/delete actions
+  - route-setup `Apply route` edge button without a redundant `Close` footer
+  - trip-details refresh without a redundant `Close` footer
+  - API-key settings actions without a redundant `Back` footer
 
 ## CI Workflows
 

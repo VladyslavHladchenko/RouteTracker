@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
@@ -816,30 +817,41 @@ private fun TransformingLazyColumnItemScope.BoardSummaryCard(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top,
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
             ) {
-                Text(
-                    text = selection.headerLineLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                )
                 Text(
                     text = selection.headerRouteSummaryLabel,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = selection.headerLineLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.End,
+                    )
+                }
             }
             IconButton(
                 onClick = onRefresh,

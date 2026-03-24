@@ -94,9 +94,9 @@ private fun rememberRouteTrackerContentPadding(
         )
         RouteTrackerColumnItemType.Surface -> responsiveInset(
             screenSizeDp = configuration.screenHeightDp,
-            fraction = 0.075f,
-            min = 14.dp,
-            max = 22.dp,
+            fraction = 0.095f,
+            min = 20.dp,
+            max = 28.dp,
         )
     }
     val bottomPadding = if (hasEdgeButton) {

@@ -832,7 +832,7 @@ private fun TransformingLazyColumnItemScope.BoardSummaryCard(
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -841,7 +841,6 @@ private fun TransformingLazyColumnItemScope.BoardSummaryCard(
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
                     )
                     Text(
                         text = statusText,
@@ -850,6 +849,7 @@ private fun TransformingLazyColumnItemScope.BoardSummaryCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.End,
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }

@@ -3,6 +3,13 @@ package com.example.routetracker.presentation
 import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -248,13 +255,33 @@ class WearScreenshotTest {
     private fun setRouteTrackerContent(content: @Composable () -> Unit) {
         composeRule.setContent {
             RouteTrackerTheme {
-                RouteTrackerAppScaffold(
-                    timeText = {
-                        TimeText(timeSource = FixedTimeSource)
-                    },
-                ) {
-                    content()
+                RoundScreenScreenshotFrame {
+                    RouteTrackerAppScaffold(
+                        timeText = {
+                            TimeText(timeSource = FixedTimeSource)
+                        },
+                    ) {
+                        content()
+                    }
                 }
+            }
+        }
+    }
+
+    @Composable
+    private fun RoundScreenScreenshotFrame(content: @Composable () -> Unit) {
+        // Keep screenshot baselines honest by showing the same circular viewport as the watch.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape),
+            ) {
+                content()
             }
         }
     }

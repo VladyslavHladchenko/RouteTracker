@@ -731,6 +731,7 @@ internal fun BoardScreen(
 
     RouteTrackerListScreen(
         state = listState,
+        firstItemType = RouteTrackerColumnItemType.Surface,
         edgeButton = {
             EdgeButton(
                 onClick = onOpenQuickRouteSwitch,
@@ -1282,7 +1283,10 @@ internal fun DepartureDetailsScreen(
 ) {
     val listState = rememberTransformingLazyColumnState()
 
-    RouteTrackerListScreen(state = listState) { transformationSpec ->
+    RouteTrackerListScreen(
+        state = listState,
+        firstItemType = RouteTrackerColumnItemType.Surface,
+    ) { transformationSpec ->
         item(key = "trip_details_summary") {
             DepartureDetailsSummaryCard(
                 selection = selection,

@@ -355,6 +355,7 @@ internal fun QuickRouteSwitchScreen(
 
     RouteTrackerListScreen(
         state = listState,
+        firstItemType = RouteTrackerColumnItemType.Surface,
         edgeButton = {
             EdgeButton(
                 onClick = onOpenRouteSetup,

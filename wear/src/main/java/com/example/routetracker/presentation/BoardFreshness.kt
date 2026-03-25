@@ -56,11 +56,8 @@ internal data class FreshnessHaloUiModel(
 private data class WaveRingStyle(
     val activeColor: Color,
     val dimColor: Color,
-    val glowColor: Color,
     val baseAlpha: Float,
     val waveAmplitude: Float,
-    val glowBaseAlpha: Float,
-    val glowWaveAmplitude: Float,
     val driftDurationMillis: Int,
 )
 
@@ -233,11 +230,8 @@ internal fun FreshnessHalo(
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val outerInset = 8.dp.toPx()
-            val glowInset = 14.dp.toPx()
-            val outerStrokeWidth = 3.5.dp.toPx()
-            val glowStrokeWidth = 10.dp.toPx()
+            val outerStrokeWidth = 4.dp.toPx()
             val outerStroke = Stroke(width = outerStrokeWidth, cap = StrokeCap.Round)
-            val glowStroke = Stroke(width = glowStrokeWidth, cap = StrokeCap.Round)
 
             if (uiModel.mode == FreshnessHaloMode.PAUSED) {
                 drawHaloArc(
@@ -257,9 +251,7 @@ internal fun FreshnessHalo(
                 pulseAlpha = pulseAlpha,
                 liveProgress = if (uiModel.mode == FreshnessHaloMode.LIVE) displayedLiveProgress else null,
                 outerInset = outerInset,
-                glowInset = glowInset,
                 outerStroke = outerStroke,
-                glowStroke = glowStroke,
             )
         }
     }
@@ -313,31 +305,15 @@ private fun DrawScope.drawContinuousWaveRing(
     pulseAlpha: Float,
     liveProgress: Float?,
     outerInset: Float,
-    glowInset: Float,
     outerStroke: Stroke,
-    glowStroke: Stroke,
 ) {
     val fullBrush = waveRingBrush(
         lowColor = style.dimColor.copy(alpha = pulseAlpha * style.baseAlpha),
         highColor = style.activeColor.copy(alpha = pulseAlpha * (style.baseAlpha + style.waveAmplitude)),
         wavePhase = wavePhase,
     )
-    val fullGlowBrush = waveRingBrush(
-        lowColor = Color.Transparent,
-        highColor = style.glowColor.copy(
-            alpha = pulseAlpha * (style.glowBaseAlpha + style.glowWaveAmplitude),
-        ),
-        wavePhase = wavePhase,
-    )
 
     if (liveProgress == null) {
-        drawHaloArc(
-            startAngle = RING_START_ANGLE,
-            sweepAngle = RING_SWEEP_ANGLE,
-            brush = fullGlowBrush,
-            inset = glowInset,
-            stroke = glowStroke,
-        )
         drawHaloArc(
             startAngle = RING_START_ANGLE,
             sweepAngle = RING_SWEEP_ANGLE,
@@ -353,18 +329,6 @@ private fun DrawScope.drawContinuousWaveRing(
         highColor = style.dimColor.copy(alpha = pulseAlpha * 0.42f),
         wavePhase = wavePhase,
     )
-    val dimGlowBrush = waveRingBrush(
-        lowColor = Color.Transparent,
-        highColor = style.glowColor.copy(alpha = pulseAlpha * 0.08f),
-        wavePhase = wavePhase,
-    )
-    drawHaloArc(
-        startAngle = RING_START_ANGLE,
-        sweepAngle = RING_SWEEP_ANGLE,
-        brush = dimGlowBrush,
-        inset = glowInset,
-        stroke = glowStroke,
-    )
     drawHaloArc(
         startAngle = RING_START_ANGLE,
         sweepAngle = RING_SWEEP_ANGLE,
@@ -378,13 +342,6 @@ private fun DrawScope.drawContinuousWaveRing(
         return
     }
 
-    drawHaloArc(
-        startAngle = RING_START_ANGLE,
-        sweepAngle = activeSweepAngle,
-        brush = fullGlowBrush,
-        inset = glowInset,
-        stroke = glowStroke,
-    )
     drawHaloArc(
         startAngle = RING_START_ANGLE,
         sweepAngle = activeSweepAngle,
@@ -419,9 +376,9 @@ private fun combinedWave(
     wavePhase: Float,
 ): Float {
     val driftRadians = wavePhase * TWO_PI
-    val broadWave = (sin(angleRadians * 1.4f - driftRadians) + 1f) * 0.5f
-    val detailWave = (sin(angleRadians * 3.1f + driftRadians * 0.55f) + 1f) * 0.5f
-    return (broadWave * 0.76f + detailWave * 0.24f).coerceIn(0f, 1f)
+    val broadWave = (sin(angleRadians * 2f - driftRadians) + 1f) * 0.5f
+    val detailWave = (sin(angleRadians * 5f + driftRadians * 0.6f) + 1f) * 0.5f
+    return (broadWave * 0.78f + detailWave * 0.22f).coerceIn(0f, 1f)
 }
 
 private fun waveRingStyleFor(
@@ -435,51 +392,36 @@ private fun waveRingStyleFor(
         FreshnessHaloMode.LIVE -> WaveRingStyle(
             activeColor = colors.primary,
             dimColor = lerpColor(colors.outlineVariant, colors.primary, 0.28f),
-            glowColor = colors.primary.copy(alpha = 1f),
-            baseAlpha = 0.24f,
-            waveAmplitude = 0.34f,
-            glowBaseAlpha = 0.03f,
-            glowWaveAmplitude = 0.16f,
+            baseAlpha = 0.58f,
+            waveAmplitude = 0.18f,
             driftDurationMillis = 16_000,
         )
         FreshnessHaloMode.REFRESHING -> WaveRingStyle(
             activeColor = lerpColor(colors.secondary, colors.primary, 0.28f),
             dimColor = lerpColor(colors.outlineVariant, colors.secondary, 0.32f),
-            glowColor = colors.secondary.copy(alpha = 1f),
-            baseAlpha = 0.36f,
-            waveAmplitude = 0.42f,
-            glowBaseAlpha = 0.08f,
-            glowWaveAmplitude = 0.22f,
+            baseAlpha = 0.68f,
+            waveAmplitude = 0.2f,
             driftDurationMillis = 9_000,
         )
         FreshnessHaloMode.CACHED -> WaveRingStyle(
             activeColor = colors.tertiary,
             dimColor = lerpColor(colors.outlineVariant, colors.tertiary, 0.24f),
-            glowColor = colors.tertiary.copy(alpha = 1f),
-            baseAlpha = 0.2f,
-            waveAmplitude = 0.26f,
-            glowBaseAlpha = 0.03f,
-            glowWaveAmplitude = 0.12f,
+            baseAlpha = 0.54f,
+            waveAmplitude = 0.16f,
             driftDurationMillis = 18_000,
         )
         FreshnessHaloMode.RATE_LIMITED -> WaveRingStyle(
             activeColor = colors.tertiary,
             dimColor = lerpColor(colors.outlineVariant, colors.tertiary, 0.26f),
-            glowColor = colors.tertiary.copy(alpha = 1f),
-            baseAlpha = 0.28f,
-            waveAmplitude = 0.3f,
-            glowBaseAlpha = 0.06f,
-            glowWaveAmplitude = 0.16f,
+            baseAlpha = 0.62f,
+            waveAmplitude = 0.18f,
             driftDurationMillis = 14_000,
         )
         FreshnessHaloMode.ERROR -> WaveRingStyle(
             activeColor = colors.error,
             dimColor = lerpColor(colors.outlineVariant, colors.error, 0.28f),
-            glowColor = colors.error.copy(alpha = 1f),
-            baseAlpha = 0.28f,
-            waveAmplitude = 0.3f,
-            glowBaseAlpha = 0.06f,
-            glowWaveAmplitude = 0.16f,
+            baseAlpha = 0.62f,
+            waveAmplitude = 0.18f,
             driftDurationMillis = 12_000,
         )
     }

@@ -11,6 +11,7 @@ import android.widget.EditText
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -75,7 +76,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "RouteTrackerUi"
-private const val HALF_MINUTE_MILLIS = 30_000L
 private const val BOARD_ROUTE = "board"
 private const val SETTINGS_ROUTE = "settings"
 private const val SETTINGS_API_KEY_ROUTE = "settings_api_key"
@@ -418,12 +418,8 @@ fun WearApp(routeRepo: RouteRepository) {
         }
     }
 
-    LaunchedEffect(showSecondsEnabled) {
+    LaunchedEffect(Unit) {
         currentSystemTime = ZonedDateTime.now()
-        if (!showSecondsEnabled) {
-            return@LaunchedEffect
-        }
-
         while (true) {
             val nowMillis = System.currentTimeMillis()
             val nextTickMillis = 1_000L - (nowMillis % 1_000L)
@@ -431,16 +427,6 @@ fun WearApp(routeRepo: RouteRepository) {
             currentSystemTime = ZonedDateTime.now()
         }
     }
-
-    val departures = snapshot?.departures.orEmpty()
-    val updatedLabel = snapshot?.fetchedAt?.let { routeRepo.formatStatusTime(it) }
-    val statusText = snapshotStatusText(
-        snapshot = snapshot,
-        autoUpdatesEnabled = autoUpdatesEnabled,
-        isRefreshing = isRefreshing,
-        hasDepartures = departures.isNotEmpty(),
-        updatedLabel = updatedLabel,
-    )
 
     RouteTrackerTheme {
         RouteTrackerAppScaffold {
@@ -465,7 +451,6 @@ fun WearApp(routeRepo: RouteRepository) {
                         snapshot = snapshotForBoard,
                         autoUpdatesEnabled = autoUpdatesForBoard,
                         isRefreshing = isRefreshingForBoard,
-                        hasDepartures = departuresForBoard.isNotEmpty(),
                         updatedLabel = updatedLabelForBoard,
                     )
 
@@ -699,11 +684,11 @@ fun WearApp(routeRepo: RouteRepository) {
 }
 
 private fun millisUntilNextHalfMinute(nowMillis: Long = System.currentTimeMillis()): Long {
-    val remainder = nowMillis % HALF_MINUTE_MILLIS
+    val remainder = nowMillis % BOARD_REFRESH_INTERVAL_MILLIS
     return if (remainder == 0L) {
-        HALF_MINUTE_MILLIS
+        BOARD_REFRESH_INTERVAL_MILLIS
     } else {
-        HALF_MINUTE_MILLIS - remainder
+        BOARD_REFRESH_INTERVAL_MILLIS - remainder
     }
 }
 
@@ -722,6 +707,7 @@ internal fun BoardScreen(
     onOpenQuickRouteSwitch: () -> Unit,
     onOpenDepartureDetails: (RouteDeparture) -> Unit,
     onRefresh: () -> Unit,
+    animateFreshnessHalo: Boolean = true,
 ) {
     val listState = rememberTransformingLazyColumnState()
     val emptyStateMessage = when {
@@ -729,68 +715,80 @@ internal fun BoardScreen(
         snapshot?.errorMessage != null -> snapshot.errorMessage
         else -> "No direct departures right now."
     }
+    val freshnessHaloUiModel = buildFreshnessHaloUiModel(
+        snapshot = snapshot,
+        autoUpdatesEnabled = autoUpdatesEnabled,
+        isRefreshing = isRefreshing,
+        currentSystemTime = currentSystemTime,
+    )
 
-    RouteTrackerListScreen(
-        state = listState,
-        firstItemType = RouteTrackerColumnItemType.Surface,
-        edgeButton = {
-            EdgeButton(
-                onClick = onOpenQuickRouteSwitch,
-                modifier = Modifier.testTag(UiTestTags.BOARD_CHANGE_ROUTE_BUTTON),
-            ) {
-                Text("Change route")
-            }
-        },
-    ) { transformationSpec ->
-        item(key = "board_summary") {
-            BoardSummaryCard(
-                selection = selection,
-                statusText = statusText,
-                onOpenQuickRouteSwitch = onOpenQuickRouteSwitch,
-                onRefresh = onRefresh,
-                transformationSpec = transformationSpec,
-            )
-        }
-
-        if (departures.isNotEmpty()) {
-            items(
-                items = departures,
-                key = { departure -> departure.rowKey },
-            ) { departure ->
-                DepartureRow(
+    Box(modifier = Modifier.fillMaxSize()) {
+        FreshnessHalo(
+            uiModel = freshnessHaloUiModel,
+            animate = animateFreshnessHalo,
+        )
+        RouteTrackerListScreen(
+            state = listState,
+            firstItemType = RouteTrackerColumnItemType.Surface,
+            edgeButton = {
+                EdgeButton(
+                    onClick = onOpenQuickRouteSwitch,
+                    modifier = Modifier.testTag(UiTestTags.BOARD_CHANGE_ROUTE_BUTTON),
+                ) {
+                    Text("Change route")
+                }
+            },
+        ) { transformationSpec ->
+            item(key = "board_summary") {
+                BoardSummaryCard(
                     selection = selection,
-                    departure = departure,
-                    currentSystemTime = currentSystemTime,
-                    showSecondsEnabled = showSecondsEnabled,
-                    onClick = {
-                        onOpenDepartureDetails(departure)
-                    },
+                    statusText = statusText,
+                    onOpenQuickRouteSwitch = onOpenQuickRouteSwitch,
+                    onRefresh = onRefresh,
                     transformationSpec = transformationSpec,
                 )
             }
-        } else {
-            item(key = "board_empty_state") {
-                EmptyStateCard(
-                    message = emptyStateMessage,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .transformedHeight(this, transformationSpec),
+
+            if (departures.isNotEmpty()) {
+                items(
+                    items = departures,
+                    key = { departure -> departure.rowKey },
+                ) { departure ->
+                    DepartureRow(
+                        selection = selection,
+                        departure = departure,
+                        currentSystemTime = currentSystemTime,
+                        showSecondsEnabled = showSecondsEnabled,
+                        onClick = {
+                            onOpenDepartureDetails(departure)
+                        },
+                        transformationSpec = transformationSpec,
+                    )
+                }
+            } else {
+                item(key = "board_empty_state") {
+                    EmptyStateCard(
+                        message = emptyStateMessage,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
+                    )
+                }
+            }
+
+            item(key = "board_settings_button") {
+                SettingsLauncherButton(
+                    onOpenSettings = onOpenSettings,
+                    transformationSpec = transformationSpec,
                 )
             }
-        }
-
-        item(key = "board_settings_button") {
-            SettingsLauncherButton(
-                onOpenSettings = onOpenSettings,
-                transformationSpec = transformationSpec,
-            )
-        }
-        item(key = "board_auto_updates") {
-            AutoUpdatesCard(
-                autoUpdatesEnabled = autoUpdatesEnabled,
-                onToggleAutoUpdates = onToggleAutoUpdates,
-                transformationSpec = transformationSpec,
-            )
+            item(key = "board_auto_updates") {
+                AutoUpdatesCard(
+                    autoUpdatesEnabled = autoUpdatesEnabled,
+                    onToggleAutoUpdates = onToggleAutoUpdates,
+                    transformationSpec = transformationSpec,
+                )
+            }
         }
     }
 }
@@ -1634,36 +1632,6 @@ private fun PanelSurface(
     }
 }
 
-private fun snapshotStatusText(
-    snapshot: DepartureSnapshot?,
-    autoUpdatesEnabled: Boolean,
-    isRefreshing: Boolean,
-    hasDepartures: Boolean,
-    updatedLabel: String?,
-): String {
-    if (!autoUpdatesEnabled) {
-        return if (updatedLabel != null && hasDepartures) {
-            "Paused | $updatedLabel"
-        } else {
-            "Updates paused"
-        }
-    }
-
-    if (snapshot == null || (isRefreshing && !hasDepartures)) {
-        return "Loading"
-    }
-    if (snapshot.errorMessage != null && !hasDepartures) {
-        return snapshot.errorMessage
-    }
-
-    val freshnessLabel = if (snapshot.isStale) "Cached" else "Live"
-    return if (isRefreshing) {
-        "$freshnessLabel | $updatedLabel | Refreshing"
-    } else {
-        "$freshnessLabel | $updatedLabel"
-    }
-}
-
 @WearPreviewDevices
 @WearPreviewFontScales
 @Composable
@@ -1680,7 +1648,6 @@ fun DefaultPreview() {
                     snapshot = previewSnapshot,
                     autoUpdatesEnabled = true,
                     isRefreshing = false,
-                    hasDepartures = previewSnapshot.departures.isNotEmpty(),
                     updatedLabel = previewSnapshot.fetchedAt.format(PREVIEW_UPDATE_TIME_FORMATTER),
                 ),
                 currentSystemTime = previewSnapshot.fetchedAt,

@@ -56,6 +56,11 @@ private sealed interface VehiclePositionCacheValue {
     object Missing : VehiclePositionCacheValue
 }
 
+enum class DepartureRefreshFailureKind {
+    RATE_LIMITED,
+    OTHER,
+}
+
 fun formatDisplayTime(
     time: ZonedDateTime,
     showSeconds: Boolean,
@@ -544,6 +549,7 @@ class RouteRepository(private val context: Context) {
                 requestedMatchCount = verifiedMatchCount,
                 isStale = true,
                 errorMessage = "Set route first.",
+                refreshFailureKind = DepartureRefreshFailureKind.OTHER,
             )
         }
 
@@ -595,11 +601,27 @@ class RouteRepository(private val context: Context) {
                     cacheTimestampElapsedRealtime = refreshedElapsedRealtime
                     Log.d(TAG, "Snapshot refreshed successfully with ${snapshot.departures.size} departures at ${snapshot.fetchedAt}.")
                 }
+            } catch (error: RateLimitExceededException) {
+                Log.w(TAG, "Rate limited while refreshing snapshot.", error)
+                currentCached?.takeIf { it.selection.stableKey == selection.stableKey }?.copy(
+                    isStale = true,
+                    errorMessage = "Showing cached data. Rate limited.",
+                    refreshFailureKind = DepartureRefreshFailureKind.RATE_LIMITED,
+                ) ?: DepartureSnapshot(
+                    selection = selection,
+                    departures = emptyList(),
+                    fetchedAt = ZonedDateTime.now(PRAGUE_ZONE),
+                    requestedMatchCount = verifiedMatchCount,
+                    isStale = true,
+                    errorMessage = "Rate limited. Try again soon.",
+                    refreshFailureKind = DepartureRefreshFailureKind.RATE_LIMITED,
+                )
             } catch (error: Exception) {
                 Log.e(TAG, "Failed to refresh snapshot.", error)
                 currentCached?.takeIf { it.selection.stableKey == selection.stableKey }?.copy(
                     isStale = true,
-                    errorMessage = "Showing cached data.",
+                    errorMessage = "Showing cached data. Unable to refresh live departures.",
+                    refreshFailureKind = DepartureRefreshFailureKind.OTHER,
                 ) ?: DepartureSnapshot(
                     selection = selection,
                     departures = emptyList(),
@@ -607,6 +629,7 @@ class RouteRepository(private val context: Context) {
                     requestedMatchCount = verifiedMatchCount,
                     isStale = true,
                     errorMessage = "Unable to load live departures.",
+                    refreshFailureKind = DepartureRefreshFailureKind.OTHER,
                 )
             }
         }
@@ -690,6 +713,7 @@ class RouteRepository(private val context: Context) {
         return matchingCached?.copy(
             isStale = true,
             errorMessage = "Updates paused.",
+            refreshFailureKind = null,
         ) ?: DepartureSnapshot(
             selection = selection,
             departures = emptyList(),
@@ -697,6 +721,7 @@ class RouteRepository(private val context: Context) {
             requestedMatchCount = getVerifiedMatchCount(),
             isStale = true,
             errorMessage = "Updates paused.",
+            refreshFailureKind = null,
         )
     }
 
@@ -1456,6 +1481,7 @@ data class DepartureSnapshot(
     val requestedMatchCount: Int = RouteRepository.DEFAULT_VERIFIED_MATCH_COUNT,
     val isStale: Boolean = false,
     val errorMessage: String? = null,
+    val refreshFailureKind: DepartureRefreshFailureKind? = null,
 ) {
     fun tileLines(showSeconds: Boolean = false): List<String> {
         val includeLine = !selection.usesFixedLine()
@@ -1477,7 +1503,7 @@ data class DepartureSnapshot(
     }
 
     fun debugSummary(): String {
-        return "route=${selection.routeSummaryWithPlatforms} departures=${departures.map { it.compactLabel }} isStale=$isStale errorMessage=$errorMessage"
+        return "route=${selection.routeSummaryWithPlatforms} departures=${departures.map { it.compactLabel }} isStale=$isStale refreshFailureKind=$refreshFailureKind errorMessage=$errorMessage"
     }
 }
 

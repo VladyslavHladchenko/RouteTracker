@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.wear.compose.material3.TimeSource
 import androidx.wear.compose.material3.TimeText
+import com.example.routetracker.data.DepartureRefreshFailureKind
 import com.example.routetracker.data.LineSelection
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.data.RouteSelection
@@ -26,6 +27,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import java.io.File
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,23 +47,13 @@ class WearScreenshotTest {
         val selection = sampleAnyPlatformSelection()
         val snapshot = previewSnapshot(selection)
 
-        setRouteTrackerContent {
-            BoardScreen(
-                selection = selection,
-                departures = snapshot.departures,
-                snapshot = snapshot,
-                statusText = "Live | 18:30",
-                currentSystemTime = snapshot.fetchedAt,
-                showSecondsEnabled = false,
-                autoUpdatesEnabled = true,
-                isRefreshing = false,
-                onOpenSettings = {},
-                onToggleAutoUpdates = {},
-                onOpenQuickRouteSwitch = {},
-                onOpenDepartureDetails = {},
-                onRefresh = {},
-            )
-        }
+        setBoardScreenContent(
+            selection = selection,
+            snapshot = snapshot,
+            currentSystemTime = snapshot.fetchedAt.plusSeconds(8),
+            autoUpdatesEnabled = true,
+            isRefreshing = false,
+        )
         captureScreen("small-round/board_with_departures.png")
     }
 
@@ -76,23 +68,13 @@ class WearScreenshotTest {
             delayMinutes = 1,
         )
 
-        setRouteTrackerContent {
-            BoardScreen(
-                selection = selection,
-                departures = listOf(departure),
-                snapshot = snapshot.copy(departures = listOf(departure)),
-                statusText = "Live | 18:30",
-                currentSystemTime = snapshot.fetchedAt,
-                showSecondsEnabled = false,
-                autoUpdatesEnabled = true,
-                isRefreshing = false,
-                onOpenSettings = {},
-                onToggleAutoUpdates = {},
-                onOpenQuickRouteSwitch = {},
-                onOpenDepartureDetails = {},
-                onRefresh = {},
-            )
-        }
+        setBoardScreenContent(
+            selection = selection,
+            snapshot = snapshot.copy(departures = listOf(departure)),
+            currentSystemTime = snapshot.fetchedAt.plusSeconds(8),
+            autoUpdatesEnabled = true,
+            isRefreshing = false,
+        )
         captureScreen("small-round/board_with_platform_delay.png")
     }
 
@@ -107,23 +89,13 @@ class WearScreenshotTest {
             delayMinutes = 1,
         )
 
-        setRouteTrackerContent {
-            BoardScreen(
-                selection = selection,
-                departures = listOf(departure),
-                snapshot = snapshot.copy(departures = listOf(departure)),
-                statusText = "Live | 18:30",
-                currentSystemTime = snapshot.fetchedAt,
-                showSecondsEnabled = false,
-                autoUpdatesEnabled = true,
-                isRefreshing = false,
-                onOpenSettings = {},
-                onToggleAutoUpdates = {},
-                onOpenQuickRouteSwitch = {},
-                onOpenDepartureDetails = {},
-                onRefresh = {},
-            )
-        }
+        setBoardScreenContent(
+            selection = selection,
+            snapshot = snapshot.copy(departures = listOf(departure)),
+            currentSystemTime = snapshot.fetchedAt.plusSeconds(8),
+            autoUpdatesEnabled = true,
+            isRefreshing = false,
+        )
         captureScreen("small-round/board_with_pinned_platform_delay.png")
     }
 
@@ -133,24 +105,87 @@ class WearScreenshotTest {
         val selection = sampleAnyPlatformSelection()
         val snapshot = previewSnapshot(selection)
 
-        setRouteTrackerContent {
-            BoardScreen(
-                selection = selection,
-                departures = emptyList(),
-                snapshot = null,
-                statusText = "Loading",
-                currentSystemTime = snapshot.fetchedAt,
-                showSecondsEnabled = false,
-                autoUpdatesEnabled = true,
-                isRefreshing = true,
-                onOpenSettings = {},
-                onToggleAutoUpdates = {},
-                onOpenQuickRouteSwitch = {},
-                onOpenDepartureDetails = {},
-                onRefresh = {},
-            )
-        }
+        setBoardScreenContent(
+            selection = selection,
+            snapshot = null,
+            currentSystemTime = snapshot.fetchedAt,
+            autoUpdatesEnabled = true,
+            isRefreshing = true,
+        )
         captureScreen("large-round/board_loading_state.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_boardPausedState() {
+        val selection = sampleAnyPlatformSelection()
+        val snapshot = previewSnapshot(selection).copy(isStale = true, errorMessage = "Updates paused.")
+
+        setBoardScreenContent(
+            selection = selection,
+            snapshot = snapshot,
+            currentSystemTime = snapshot.fetchedAt.plusSeconds(12),
+            autoUpdatesEnabled = false,
+            isRefreshing = false,
+        )
+        captureScreen("small-round/board_paused_state.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_boardCachedState() {
+        val selection = sampleAnyPlatformSelection()
+        val snapshot = previewSnapshot(selection).copy(isStale = true)
+
+        setBoardScreenContent(
+            selection = selection,
+            snapshot = snapshot,
+            currentSystemTime = snapshot.fetchedAt.plusSeconds(35),
+            autoUpdatesEnabled = true,
+            isRefreshing = false,
+        )
+        captureScreen("small-round/board_cached_state.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_boardRateLimitedState() {
+        val selection = sampleAnyPlatformSelection()
+        val snapshot = previewSnapshot(selection).copy(
+            isStale = true,
+            errorMessage = "Showing cached data. Rate limited.",
+            refreshFailureKind = DepartureRefreshFailureKind.RATE_LIMITED,
+        )
+
+        setBoardScreenContent(
+            selection = selection,
+            snapshot = snapshot,
+            currentSystemTime = snapshot.fetchedAt.plusSeconds(35),
+            autoUpdatesEnabled = true,
+            isRefreshing = false,
+        )
+        captureScreen("small-round/board_rate_limited_state.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_boardErrorState() {
+        val selection = sampleAnyPlatformSelection()
+        val snapshot = previewSnapshot(selection).copy(
+            departures = emptyList(),
+            isStale = true,
+            errorMessage = "Unable to load live departures.",
+            refreshFailureKind = DepartureRefreshFailureKind.OTHER,
+        )
+
+        setBoardScreenContent(
+            selection = selection,
+            snapshot = snapshot,
+            currentSystemTime = snapshot.fetchedAt.plusSeconds(35),
+            autoUpdatesEnabled = true,
+            isRefreshing = false,
+        )
+        captureScreen("small-round/board_error_state.png")
     }
 
     @Test
@@ -268,6 +303,38 @@ class WearScreenshotTest {
         }
     }
 
+    private fun setBoardScreenContent(
+        selection: RouteSelection,
+        snapshot: com.example.routetracker.data.DepartureSnapshot?,
+        currentSystemTime: ZonedDateTime,
+        autoUpdatesEnabled: Boolean,
+        isRefreshing: Boolean,
+    ) {
+        setRouteTrackerContent {
+            BoardScreen(
+                selection = selection,
+                departures = snapshot?.departures.orEmpty(),
+                snapshot = snapshot,
+                statusText = snapshotStatusText(
+                    snapshot = snapshot,
+                    autoUpdatesEnabled = autoUpdatesEnabled,
+                    isRefreshing = isRefreshing,
+                    updatedLabel = snapshot?.fetchedAt?.format(SCREENSHOT_STATUS_TIME_FORMATTER),
+                ),
+                currentSystemTime = currentSystemTime,
+                showSecondsEnabled = false,
+                autoUpdatesEnabled = autoUpdatesEnabled,
+                isRefreshing = isRefreshing,
+                onOpenSettings = {},
+                onToggleAutoUpdates = {},
+                onOpenQuickRouteSwitch = {},
+                onOpenDepartureDetails = {},
+                onRefresh = {},
+                animateFreshnessHalo = false,
+            )
+        }
+    }
+
     @Composable
     private fun RoundScreenScreenshotFrame(content: @Composable () -> Unit) {
         // Keep screenshot baselines honest by showing the same circular viewport as the watch.
@@ -350,6 +417,7 @@ class WearScreenshotTest {
     private companion object {
         const val SMALL_ROUND_QUALIFIERS = "w220dp-h220dp-round"
         const val LARGE_ROUND_QUALIFIERS = "w280dp-h280dp-round"
+        val SCREENSHOT_STATUS_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
         val FIXED_NOW: ZonedDateTime = ZonedDateTime.of(
             2026,
             3,

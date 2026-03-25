@@ -72,6 +72,8 @@ class GolemioApiClient(
             }
         )
 
+        var lastRateLimitResponseBody = ""
+
         repeat(4) { attempt ->
             Log.d(API_TAG, "GET $path attempt=${attempt + 1} params=$params")
             val connection = (url.openConnection() as HttpURLConnection).apply {
@@ -88,6 +90,7 @@ class GolemioApiClient(
                 val cacheControl = connection.getHeaderField("Cache-Control")
 
                 if (statusCode == 429) {
+                    lastRateLimitResponseBody = responseBody
                     val retryAfterSeconds = connection.getHeaderField("Retry-After")
                         ?.toDoubleOrNull()
                         ?: (1.5 * (attempt + 1))
@@ -133,7 +136,10 @@ class GolemioApiClient(
             }
         }
 
-        throw IOException("Golemio API rate-limited the request too many times.")
+        throw RateLimitExceededException(
+            responseBody = lastRateLimitResponseBody,
+            message = "HTTP 429 for $path after retries",
+        )
     }
 
     private fun readResponseBody(
@@ -145,11 +151,20 @@ class GolemioApiClient(
     }
 }
 
-internal class ApiException(
+internal open class ApiException(
     val statusCode: Int,
     val responseBody: String,
     message: String,
 ) : IOException(message)
+
+internal class RateLimitExceededException(
+    responseBody: String,
+    message: String,
+) : ApiException(
+        statusCode = 429,
+        responseBody = responseBody,
+        message = message,
+    )
 
 private data class RawApiResponse(
     val body: String,

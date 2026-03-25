@@ -32,7 +32,7 @@ import kotlin.math.sin
 
 internal const val BOARD_REFRESH_INTERVAL_MILLIS = 30_000L
 
-private const val RING_START_ANGLE = -110f
+private const val RING_START_ANGLE = -70f
 private const val RING_SWEEP_ANGLE = 320f
 private const val WAVE_BRUSH_STOP_COUNT = 32
 private const val TWO_PI = (PI * 2.0).toFloat()

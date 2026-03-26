@@ -93,8 +93,9 @@ Favorites are stored locally and shown in both quick-switch and route setup.
 Current behavior:
 
 - `Save favorite` adds the current route setup
-- quick switch shows the current route, a visible `Swap direction` action, favorites, and a `New route` edge button
+- quick switch shows the current route, swipe actions for `Swap` / `Edit`, favorites, and a `New route` edge button
 - tapping a favorite in quick-switch applies it immediately
+- swiping left on the current route reveals `Swap` / `Edit`, and a full swipe swaps direction
 - swiping left on a favorite in quick-switch reveals `Edit favorite` / `Delete favorite`
 - favorites are de-duplicated by origin, destination, platform filters, and line
 - favorites are capped at `8`
@@ -555,7 +556,7 @@ Behavior tests:
   - visible board actions for `Change route` and refresh
   - board row platform and delay rendering
   - quick-switch favorite ordering
-  - quick-switch `Swap direction`
+  - quick-switch current-route swipe reveal and full-swipe swap
   - favorite swipe-to-reveal edit/delete actions
   - route-setup `Apply route` edge button without a redundant `Close` footer
   - trip-details refresh without a redundant `Close` footer

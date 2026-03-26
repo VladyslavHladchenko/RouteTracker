@@ -11,12 +11,15 @@ import android.widget.EditText
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -534,31 +537,37 @@ private fun TransformingLazyColumnItemScope.CurrentRouteQuickSwitchRow(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "Current route",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = "Swipe left",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Current route",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = currentSelection.routeSummaryLabel,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                    Text(
+                        text = currentSelection.favoriteSummaryLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .padding(start = 10.dp)
+                        .height(28.dp)
+                        .width(4.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
+                            shape = RoundedCornerShape(99.dp),
+                        ),
                 )
             }
-            Text(
-                text = currentSelection.routeSummaryLabel,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-            Text(
-                text = currentSelection.favoriteSummaryLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
         }
     }
 }

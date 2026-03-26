@@ -23,9 +23,9 @@ class ComplicationTimelinePlannerTest {
             now = now.toInstant(),
         )
 
-        assertNull(plan.defaultState.title)
+        assertNull(plan.defaultState.shortTitle)
         val staleWindow = plan.futureWindows.first { it.start == now.toInstant().plusSeconds(COMPLICATION_STALE_AFTER_SECONDS) }
-        assertEquals("\u2022", staleWindow.state.title)
+        assertEquals("\u2022", staleWindow.state.shortTitle)
         assertTrue(staleWindow.state.contentDescription.contains("Showing data older than 30 seconds."))
     }
 
@@ -43,7 +43,7 @@ class ComplicationTimelinePlannerTest {
         )
 
         val staleWindow = plan.futureWindows.first { it.start == now.toInstant().plusSeconds(60) }
-        assertEquals("\u2022\u2022", staleWindow.state.title)
+        assertEquals("\u2022\u2022", staleWindow.state.shortTitle)
         assertTrue(staleWindow.state.contentDescription.contains("Showing data older than 1 minute."))
     }
 
@@ -61,7 +61,7 @@ class ComplicationTimelinePlannerTest {
         )
 
         val staleWindow = plan.futureWindows.first { it.start == now.toInstant().plusSeconds(120) }
-        assertEquals("\u2022\u2022\u2022", staleWindow.state.title)
+        assertEquals("\u2022\u2022\u2022", staleWindow.state.shortTitle)
         assertTrue(staleWindow.state.contentDescription.contains("Showing data older than 2 minutes."))
     }
 
@@ -85,7 +85,7 @@ class ComplicationTimelinePlannerTest {
 
         val handoffWindow = plan.futureWindows.first { it.start == firstDeparture.toInstant() }
         assertEquals(secondDeparture.toInstant(), handoffWindow.state.departureInstant)
-        assertEquals("7", handoffWindow.state.fallbackText)
+        assertEquals("7", handoffWindow.state.shortTextFallback)
     }
 
     @Test
@@ -104,7 +104,7 @@ class ComplicationTimelinePlannerTest {
 
         val emptyWindow = plan.futureWindows.first { it.start == departureTime.toInstant() }
         assertNull(emptyWindow.state.departureInstant)
-        assertEquals("--", emptyWindow.state.fallbackText)
+        assertEquals("--", emptyWindow.state.shortTextFallback)
     }
 
     @Test
@@ -121,17 +121,62 @@ class ComplicationTimelinePlannerTest {
             now = now.toInstant(),
         )
 
-        assertEquals("\u2022\u2022\u2022", plan.defaultState.title)
+        assertEquals("\u2022\u2022\u2022", plan.defaultState.shortTitle)
         assertTrue(plan.defaultState.contentDescription.contains("Showing stale fallback data."))
+    }
+
+    @Test
+    fun `builds long text departure list for fixed line selections`() {
+        val now = pragueTime(hour = 12, minute = 0, second = 0)
+        val snapshot = snapshot(
+            fetchedAt = now,
+            departures = listOf(
+                departure(tripId = "trip-1", departureTime = now.plusMinutes(5), lineShortName = "7"),
+                departure(tripId = "trip-2", departureTime = now.plusMinutes(12), lineShortName = "7"),
+                departure(tripId = "trip-3", departureTime = now.plusMinutes(19), lineShortName = "7"),
+                departure(tripId = "trip-4", departureTime = now.plusMinutes(26), lineShortName = "7"),
+            ),
+        )
+
+        val plan = ComplicationTimelinePlanner.create(
+            snapshot = snapshot,
+            now = now.toInstant(),
+        )
+
+        assertEquals("12:05 / 12:12 / 12:19", plan.defaultState.longText)
+        assertEquals("Line 7", plan.defaultState.longTitle)
+    }
+
+    @Test
+    fun `builds long text departure list with line prefixes for any-line selections`() {
+        val now = pragueTime(hour = 12, minute = 0, second = 0)
+        val snapshot = snapshot(
+            fetchedAt = now,
+            selection = RouteRepository.defaultRouteToPalmovka().copy(line = null),
+            departures = listOf(
+                departure(tripId = "trip-1", departureTime = now.plusMinutes(5), lineShortName = "7"),
+                departure(tripId = "trip-2", departureTime = now.plusMinutes(12), lineShortName = "10"),
+                departure(tripId = "trip-3", departureTime = now.plusMinutes(19), lineShortName = "16"),
+            ),
+        )
+
+        val plan = ComplicationTimelinePlanner.create(
+            snapshot = snapshot,
+            now = now.toInstant(),
+        )
+
+        assertEquals("7 12:05 / 10 12:12 / 16 12:19", plan.defaultState.longText)
+        assertEquals("Palmovka", plan.defaultState.longTitle)
     }
 
     private fun snapshot(
         fetchedAt: ZonedDateTime,
+        selection: RouteSelection = RouteRepository.defaultRouteToPalmovka(),
         departures: List<RouteDeparture>,
         isStale: Boolean = false,
     ): DepartureSnapshot {
         return DepartureSnapshot(
-            selection = RouteRepository.defaultRouteToPalmovka(),
+            selection = selection,
             departures = departures,
             fetchedAt = fetchedAt,
             isStale = isStale,
@@ -141,10 +186,11 @@ class ComplicationTimelinePlannerTest {
     private fun departure(
         tripId: String,
         departureTime: ZonedDateTime,
+        lineShortName: String = "7",
     ): RouteDeparture {
         return RouteDeparture(
             tripId = tripId,
-            lineShortName = "7",
+            lineShortName = lineShortName,
             departureTime = departureTime,
             countdownMinutes = 0,
             delayMinutes = 0,

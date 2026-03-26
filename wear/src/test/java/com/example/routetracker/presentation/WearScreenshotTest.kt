@@ -1,20 +1,30 @@
 package com.example.routetracker.presentation
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Rect
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.wear.compose.material3.TimeSource
 import androidx.wear.compose.material3.TimeText
+import androidx.wear.watchface.complications.data.ComplicationData
+import androidx.wear.watchface.complications.data.ComplicationType
+import androidx.wear.watchface.complications.rendering.ComplicationDrawable
+import com.example.routetracker.complication.MainComplicationService
 import com.example.routetracker.data.DepartureRefreshFailureKind
 import com.example.routetracker.data.LineSelection
 import com.example.routetracker.data.RouteRepository
@@ -279,6 +289,28 @@ class WearScreenshotTest {
         captureScreen("small-round/trip_details.png")
     }
 
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_complicationShortTextPreview() {
+        setComplicationPreviewContent(
+            complicationData = mainComplicationPreview(ComplicationType.SHORT_TEXT),
+            width = 84,
+            height = 84,
+        )
+        captureScreen("small-round/complication_short_text_preview.png")
+    }
+
+    @Test
+    @Config(qualifiers = LARGE_ROUND_QUALIFIERS)
+    fun largeRound_complicationLongTextPreview() {
+        setComplicationPreviewContent(
+            complicationData = mainComplicationPreview(ComplicationType.LONG_TEXT),
+            width = 232,
+            height = 84,
+        )
+        captureScreen("large-round/complication_long_text_preview.png")
+    }
+
     private fun captureScreen(relativePath: String) {
         composeRule.waitForIdle()
         composeRule.onRoot().captureRoboImage(
@@ -335,6 +367,31 @@ class WearScreenshotTest {
         }
     }
 
+    private fun setComplicationPreviewContent(
+        complicationData: ComplicationData,
+        width: Int,
+        height: Int,
+    ) {
+        val bitmap = renderComplicationBitmap(
+            complicationData = complicationData,
+            width = width,
+            height = height,
+        )
+        composeRule.setContent {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                )
+            }
+        }
+    }
+
     @Composable
     private fun RoundScreenScreenshotFrame(content: @Composable () -> Unit) {
         // Keep screenshot baselines honest by showing the same circular viewport as the watch.
@@ -368,6 +425,27 @@ class WearScreenshotTest {
             "verify" -> RoborazziTaskType.Verify
             else -> RoborazziTaskType.Compare
         }
+    }
+
+    private fun mainComplicationPreview(type: ComplicationType): ComplicationData {
+        return checkNotNull(MainComplicationService().getPreviewData(type)) {
+            "Missing preview data for $type"
+        }
+    }
+
+    private fun renderComplicationBitmap(
+        complicationData: ComplicationData,
+        width: Int,
+        height: Int,
+    ): Bitmap {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val drawable = ComplicationDrawable(composeRule.activity).apply {
+            setBounds(Rect(0, 0, width, height))
+            currentTime = FIXED_NOW.toInstant()
+            setComplicationData(complicationData, false)
+        }
+        drawable.draw(Canvas(bitmap))
+        return bitmap
     }
 
     private fun createSelection(

@@ -7,7 +7,7 @@ private const val TAG = "RouteTrackerComp"
 
 class MainComplicationService : BaseCountdownComplicationService() {
     override val logTag: String = TAG
-    override val previewText: String = "8"
+    override val previewShortText: String = "8"
 
     override fun buildCountdownText(departureInstant: Instant): ComplicationText {
         return buildMinuteCountdownText(departureInstant)

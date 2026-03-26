@@ -7,8 +7,6 @@ import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationText
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.data.CountDownTimeReference
-import androidx.wear.watchface.complications.data.PlainComplicationText
-import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.data.TimeDifferenceComplicationText
 import androidx.wear.watchface.complications.data.TimeDifferenceStyle
 import androidx.wear.watchface.complications.datasource.ComplicationDataTimeline
@@ -27,21 +25,31 @@ import kotlinx.coroutines.withContext
 
 abstract class BaseCountdownComplicationService : SuspendingTimelineComplicationDataSourceService() {
     protected abstract val logTag: String
-    protected abstract val previewText: String
+    protected abstract val previewShortText: String
     protected abstract fun buildCountdownText(departureInstant: Instant): ComplicationText
 
+    protected open val previewLongText: String = "18:33 / 18:41 / 18:49"
+    protected open val previewLongTitle: String? = "Line 7"
+
     override fun getPreviewData(type: ComplicationType): ComplicationData? {
-        if (type != ComplicationType.SHORT_TEXT) {
-            return null
+        return when (type) {
+            ComplicationType.SHORT_TEXT,
+            ComplicationType.LONG_TEXT,
+            -> createCountdownComplicationData(
+                state = ComplicationDisplayState(
+                    departureInstant = null,
+                    shortTextFallback = previewShortText,
+                    shortTitle = null,
+                    longText = previewLongText,
+                    longTitle = previewLongTitle,
+                    contentDescription = "Upcoming direct transport departures.",
+                ),
+                type = type,
+                buildCountdownText = ::buildCountdownText,
+            )
+
+            else -> null
         }
-        return createComplicationData(
-            state = ComplicationDisplayState(
-                departureInstant = null,
-                fallbackText = previewText,
-                title = null,
-                contentDescription = "Next direct transport departure countdown.",
-            ),
-        )
     }
 
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationDataTimeline {
@@ -54,43 +62,36 @@ abstract class BaseCountdownComplicationService : SuspendingTimelineComplication
             now = Instant.now(),
         )
         Log.d(logTag, "Complication request. ${snapshot.debugSummary()}")
+        val tapAction = buildTapAction()
         return ComplicationDataTimeline(
-            defaultComplicationData = createComplicationData(plan.defaultState),
+            defaultComplicationData = createCountdownComplicationData(
+                state = plan.defaultState,
+                type = request.complicationType,
+                buildCountdownText = ::buildCountdownText,
+                tapAction = tapAction,
+            ),
             timelineEntries = plan.futureWindows.map { window ->
                 TimelineEntry(
                     validity = TimeInterval(window.start, window.end),
-                    complicationData = createComplicationData(window.state),
+                    complicationData = createCountdownComplicationData(
+                        state = window.state,
+                        type = request.complicationType,
+                        buildCountdownText = ::buildCountdownText,
+                        tapAction = tapAction,
+                    ),
                 )
             },
         )
     }
 
-    private fun createComplicationData(
-        state: ComplicationDisplayState,
-    ): ComplicationData {
+    private fun buildTapAction(): PendingIntent {
         val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
+        return PendingIntent.getActivity(
             this,
             0,
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-
-        val text: ComplicationText = state.departureInstant?.let(::buildCountdownText)
-            ?: PlainComplicationText.Builder(state.fallbackText).build()
-
-        val builder = ShortTextComplicationData.Builder(
-            text = text,
-            contentDescription = PlainComplicationText.Builder(state.contentDescription).build()
-        )
-
-        state.title?.let { title ->
-            builder.setTitle(PlainComplicationText.Builder(title).build())
-        }
-
-        return builder
-            .setTapAction(pendingIntent)
-            .build()
     }
 
     protected fun buildMinuteCountdownText(departureInstant: Instant): ComplicationText {

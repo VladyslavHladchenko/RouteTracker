@@ -32,6 +32,12 @@ import kotlin.math.sin
 
 internal const val BOARD_REFRESH_INTERVAL_MILLIS = 30_000L
 
+private val LIVE_RING_COLOR = Color(0xFF3F86FF)
+private val REFRESHING_RING_COLOR = Color(0xFF1FD8A6)
+private val CACHED_RING_COLOR = Color(0xFFFFC247)
+private val RATE_LIMITED_RING_COLOR = Color(0xFFFF8A2B)
+private val ERROR_RING_COLOR = Color(0xFFFF5C52)
+
 private const val RING_START_ANGLE = -70f
 private const val RING_SWEEP_ANGLE = 320f
 private const val WAVE_BRUSH_STOP_COUNT = 32
@@ -229,8 +235,8 @@ internal fun FreshnessHalo(
         val pausedColor = colorScheme.outline.copy(alpha = 0.78f)
 
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val outerInset = 8.dp.toPx()
             val outerStrokeWidth = 4.dp.toPx()
+            val outerInset = outerStrokeWidth / 2f
             val outerStroke = Stroke(width = outerStrokeWidth, cap = StrokeCap.Round)
 
             if (uiModel.mode == FreshnessHaloMode.PAUSED) {
@@ -390,38 +396,38 @@ private fun waveRingStyleFor(
         FreshnessHaloMode.PAUSED,
         -> null
         FreshnessHaloMode.LIVE -> WaveRingStyle(
-            activeColor = colors.primary,
-            dimColor = lerpColor(colors.outlineVariant, colors.primary, 0.28f),
+            activeColor = LIVE_RING_COLOR,
+            dimColor = lerpColor(colors.outlineVariant, LIVE_RING_COLOR, 0.52f),
             baseAlpha = 0.58f,
-            waveAmplitude = 0.18f,
+            waveAmplitude = 0.22f,
             driftDurationMillis = 16_000,
         )
         FreshnessHaloMode.REFRESHING -> WaveRingStyle(
-            activeColor = lerpColor(colors.secondary, colors.primary, 0.28f),
-            dimColor = lerpColor(colors.outlineVariant, colors.secondary, 0.32f),
+            activeColor = REFRESHING_RING_COLOR,
+            dimColor = lerpColor(colors.outlineVariant, REFRESHING_RING_COLOR, 0.56f),
             baseAlpha = 0.68f,
-            waveAmplitude = 0.2f,
+            waveAmplitude = 0.24f,
             driftDurationMillis = 9_000,
         )
         FreshnessHaloMode.CACHED -> WaveRingStyle(
-            activeColor = colors.tertiary,
-            dimColor = lerpColor(colors.outlineVariant, colors.tertiary, 0.24f),
-            baseAlpha = 0.54f,
-            waveAmplitude = 0.16f,
+            activeColor = CACHED_RING_COLOR,
+            dimColor = lerpColor(colors.outlineVariant, CACHED_RING_COLOR, 0.54f),
+            baseAlpha = 0.58f,
+            waveAmplitude = 0.18f,
             driftDurationMillis = 18_000,
         )
         FreshnessHaloMode.RATE_LIMITED -> WaveRingStyle(
-            activeColor = colors.tertiary,
-            dimColor = lerpColor(colors.outlineVariant, colors.tertiary, 0.26f),
-            baseAlpha = 0.62f,
-            waveAmplitude = 0.18f,
+            activeColor = RATE_LIMITED_RING_COLOR,
+            dimColor = lerpColor(colors.outlineVariant, RATE_LIMITED_RING_COLOR, 0.6f),
+            baseAlpha = 0.64f,
+            waveAmplitude = 0.2f,
             driftDurationMillis = 14_000,
         )
         FreshnessHaloMode.ERROR -> WaveRingStyle(
-            activeColor = colors.error,
-            dimColor = lerpColor(colors.outlineVariant, colors.error, 0.28f),
-            baseAlpha = 0.62f,
-            waveAmplitude = 0.18f,
+            activeColor = ERROR_RING_COLOR,
+            dimColor = lerpColor(colors.outlineVariant, ERROR_RING_COLOR, 0.58f),
+            baseAlpha = 0.66f,
+            waveAmplitude = 0.2f,
             driftDurationMillis = 12_000,
         )
     }

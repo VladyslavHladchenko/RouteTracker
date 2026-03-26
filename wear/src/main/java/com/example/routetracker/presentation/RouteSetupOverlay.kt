@@ -45,6 +45,7 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.CompactButton
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
@@ -395,15 +396,25 @@ internal fun QuickRouteSwitchScreen(
             }
         }
         item(key = "quick_switch_swap") {
-            Button(
-                onClick = { onSwapRoute(currentSelection.swappedEndpoints()) },
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON)
                     .transformedHeight(this, transformationSpec),
-                transformation = SurfaceTransformation(transformationSpec),
+                horizontalArrangement = Arrangement.Center,
             ) {
-                Text("Swap direction")
+                CompactButton(
+                    onClick = { onSwapRoute(currentSelection.swappedEndpoints()) },
+                    modifier = Modifier.testTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        iconColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    transformation = SurfaceTransformation(transformationSpec),
+                    label = {
+                        Text("Swap")
+                    },
+                )
             }
         }
         item(key = "quick_switch_hint") {

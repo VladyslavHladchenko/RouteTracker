@@ -8,6 +8,7 @@ const val COMPLICATION_STALE_AFTER_SECONDS = 30L
 private const val COMPLICATION_TIMELINE_HORIZON_SECONDS = 120L * 60L
 private const val SECOND_STALE_AFTER_SECONDS = 60L
 private const val THIRD_STALE_AFTER_SECONDS = 120L
+private const val LONG_TEXT_DEPARTURE_COUNT = 3
 
 private data class StaleStatusIndicator(
     val title: String,
@@ -36,8 +37,10 @@ private val FALLBACK_STALE_STATUS = StaleStatusIndicator(
 
 data class ComplicationDisplayState(
     val departureInstant: Instant?,
-    val fallbackText: String,
-    val title: String?,
+    val shortTextFallback: String,
+    val shortTitle: String?,
+    val longText: String,
+    val longTitle: String?,
     val contentDescription: String,
 )
 
@@ -120,13 +123,19 @@ object ComplicationTimelinePlanner {
             snapshot = snapshot,
             instant = instant,
         )
-        val departure = snapshot.departures.firstOrNull { it.departureTime.toInstant().isAfter(instant) }
+        val upcomingDepartures = snapshot.departures
+            .filter { it.departureTime.toInstant().isAfter(instant) }
+        val departure = upcomingDepartures.firstOrNull()
+        val futureDepartures = upcomingDepartures.take(LONG_TEXT_DEPARTURE_COUNT)
+        val longTitle = buildLongTitle(snapshot, staleStatus)
 
         if (departure == null) {
             return ComplicationDisplayState(
                 departureInstant = null,
-                fallbackText = "--",
-                title = staleStatus?.title,
+                shortTextFallback = "--",
+                shortTitle = staleStatus?.title,
+                longText = "No departures",
+                longTitle = longTitle,
                 contentDescription = buildString {
                     append("No upcoming direct departures from ")
                     append(snapshot.selection.origin.stationName)
@@ -142,21 +151,71 @@ object ComplicationTimelinePlanner {
 
         return ComplicationDisplayState(
             departureInstant = departure.departureTime.toInstant(),
-            fallbackText = departure.countdownMinutesAt(instant).toString(),
-            title = staleStatus?.title,
+            shortTextFallback = departure.countdownMinutesAt(instant).toString(),
+            shortTitle = staleStatus?.title,
+            longText = buildLongText(snapshot, futureDepartures),
+            longTitle = longTitle,
             contentDescription = buildString {
-                append("Next direct departure from ")
+                append("Upcoming direct departures from ")
                 append(snapshot.selection.origin.stationName)
                 append(" to ")
                 append(snapshot.selection.destination.stationName)
-                append(" on line ")
-                append(departure.lineShortName)
+                snapshot.selection.line?.shortName?.let { lineShortName ->
+                    append(" on line ")
+                    append(lineShortName)
+                }
+                append(": ")
+                append(
+                    futureDepartures.joinToString(", ") { futureDeparture ->
+                        if (snapshot.selection.usesFixedLine()) {
+                            formatDisplayTime(futureDeparture.departureTime, showSeconds = false)
+                        } else {
+                            "line ${futureDeparture.lineShortName} at " +
+                                formatDisplayTime(futureDeparture.departureTime, showSeconds = false)
+                        }
+                    }
+                )
                 staleStatus?.let { status ->
                     append(" ")
                     append(status.contentDescriptionSuffix)
                 }
             },
         )
+    }
+
+    private fun buildLongText(
+        snapshot: DepartureSnapshot,
+        departures: List<RouteDeparture>,
+    ): String {
+        if (departures.isEmpty()) {
+            return "No departures"
+        }
+
+        val includeLine = !snapshot.selection.usesFixedLine()
+        return departures.joinToString(" / ") { departure ->
+            val departureTime = formatDisplayTime(departure.departureTime, showSeconds = false)
+            if (includeLine) {
+                "${departure.lineShortName} $departureTime"
+            } else {
+                departureTime
+            }
+        }
+    }
+
+    private fun buildLongTitle(
+        snapshot: DepartureSnapshot,
+        staleStatus: StaleStatusIndicator?,
+    ): String? {
+        val baseTitle = if (snapshot.selection.usesFixedLine()) {
+            snapshot.selection.line?.displayLabel
+        } else {
+            snapshot.selection.destination.stationName
+        }
+
+        return listOfNotNull(
+            baseTitle?.takeIf { it.isNotBlank() },
+            staleStatus?.title,
+        ).joinToString(" ").ifBlank { null }
     }
 
     private fun staleStatusAt(

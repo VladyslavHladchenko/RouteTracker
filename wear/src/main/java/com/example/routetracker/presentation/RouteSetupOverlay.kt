@@ -34,6 +34,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -377,8 +378,8 @@ internal fun QuickRouteSwitchScreen(
         }
         item(key = "quick_switch_hint") {
             RouteSetupInfoCard(
-                title = "Swipe actions",
-                value = "Current route: swap or edit. Favorites: edit or delete.",
+                title = "Favorites",
+                value = "Tap to apply. Swipe left for edit and delete.",
                 modifier = Modifier
                     .fillMaxWidth()
                     .transformedHeight(this, transformationSpec),
@@ -531,11 +532,22 @@ private fun TransformingLazyColumnItemScope.CurrentRouteQuickSwitchRow(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
             ),
         ) {
-            Text(
-                text = "Current route",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Current route",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "Swipe left",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
                 text = currentSelection.routeSummaryLabel,
                 style = MaterialTheme.typography.titleMedium,

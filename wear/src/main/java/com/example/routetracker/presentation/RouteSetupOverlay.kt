@@ -378,15 +378,6 @@ internal fun QuickRouteSwitchScreen(
                 onOpenRouteSetup = onOpenRouteSetup,
             )
         }
-        item(key = "quick_switch_hint") {
-            RouteSetupInfoCard(
-                title = "Favorites",
-                value = "Tap to apply. Swipe left for edit and delete.",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .transformedHeight(this, transformationSpec),
-            )
-        }
         if (favoriteRoutes.isEmpty()) {
             item(key = "quick_switch_empty") {
                 RouteSetupInfoCard(

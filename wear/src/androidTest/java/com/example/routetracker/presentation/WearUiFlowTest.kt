@@ -143,7 +143,43 @@ class WearUiFlowTest {
     }
 
     @Test
-    fun quickSwitchSwapButtonAppliesSwappedSelection() {
+    fun currentRouteSwipeRevealsSwapAndEditActions() {
+        val currentSelection = samplePinnedSelection()
+        var editOpened = false
+
+        setRouteTrackerContent {
+            QuickRouteSwitchScreen(
+                currentSelection = currentSelection,
+                favoriteRoutes = emptyList(),
+                onSwapRoute = {},
+                onApplyFavorite = {},
+                onEditFavorite = {},
+                onDeleteFavorite = {},
+                onOpenRouteSetup = { editOpened = true },
+            )
+        }
+
+        composeRule.onNodeWithTag(UiTestTags.QUICK_SWITCH_CURRENT_ROUTE_CARD)
+            .performTouchInput { swipeLeft(startX = right - 1f, endX = centerX, durationMillis = 300) }
+
+        composeRule.onAllNodesWithTag(
+            UiTestTags.QUICK_SWITCH_SWAP_BUTTON,
+            useUnmergedTree = true,
+        ).assertCountEquals(1)
+        composeRule.onAllNodesWithTag(
+            UiTestTags.QUICK_SWITCH_EDIT_BUTTON,
+            useUnmergedTree = true,
+        ).assertCountEquals(1)
+
+        composeRule.onNodeWithTag(UiTestTags.QUICK_SWITCH_EDIT_BUTTON, useUnmergedTree = true)
+            .performClick()
+        composeRule.runOnIdle {
+            assertTrue(editOpened)
+        }
+    }
+
+    @Test
+    fun currentRouteFullSwipeAppliesSwappedSelection() {
         val currentSelection = samplePinnedSelection()
         var swappedSelection: RouteSelection? = null
 
@@ -159,7 +195,8 @@ class WearUiFlowTest {
             )
         }
 
-        composeRule.onNodeWithTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON).performClick()
+        composeRule.onNodeWithTag(UiTestTags.QUICK_SWITCH_CURRENT_ROUTE_CARD)
+            .performTouchInput { swipeLeft(startX = right - 1f, endX = left + 1f, durationMillis = 300) }
         composeRule.runOnIdle {
             val applied = swappedSelection
             requireNotNull(applied)

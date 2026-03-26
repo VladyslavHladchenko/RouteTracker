@@ -45,7 +45,6 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.CardDefaults
-import androidx.wear.compose.material3.CompactButton
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
@@ -367,60 +366,19 @@ internal fun QuickRouteSwitchScreen(
         },
     ) { transformationSpec ->
         item(key = "quick_switch_current") {
-            Card(
-                onClick = { onApplyFavorite(currentSelection) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .transformedHeight(this, transformationSpec),
-                transformation = SurfaceTransformation(transformationSpec),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-            ) {
-                Text(
-                    text = "Current route",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = currentSelection.routeSummaryLabel,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                Text(
-                    text = currentSelection.favoriteSummaryLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        item(key = "quick_switch_swap") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .transformedHeight(this, transformationSpec),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                CompactButton(
-                    onClick = { onSwapRoute(currentSelection.swappedEndpoints()) },
-                    modifier = Modifier.testTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        iconColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    transformation = SurfaceTransformation(transformationSpec),
-                    label = {
-                        Text("Swap")
-                    },
-                )
-            }
+            CurrentRouteQuickSwitchRow(
+                currentSelection = currentSelection,
+                listState = listState,
+                coroutineScope = coroutineScope,
+                transformationSpec = transformationSpec,
+                onSwapRoute = onSwapRoute,
+                onOpenRouteSetup = onOpenRouteSetup,
+            )
         }
         item(key = "quick_switch_hint") {
             RouteSetupInfoCard(
-                title = "Favorites",
-                value = "Tap to apply. Swipe left for edit and delete.",
+                title = "Swipe actions",
+                value = "Current route: swap or edit. Favorites: edit or delete.",
                 modifier = Modifier
                     .fillMaxWidth()
                     .transformedHeight(this, transformationSpec),
@@ -488,6 +446,109 @@ internal fun RouteSetupHomePage(
         onApplyRoute = onApplyRoute,
         onRetryCatalog = onRetryCatalog,
     )
+}
+
+@Composable
+private fun TransformingLazyColumnItemScope.CurrentRouteQuickSwitchRow(
+    currentSelection: RouteSelection,
+    listState: TransformingLazyColumnState,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    transformationSpec: TransformationSpec,
+    onSwapRoute: (RouteSelection) -> Unit,
+    onOpenRouteSetup: () -> Unit,
+) {
+    val revealState = rememberRevealState()
+    val swappedSelection = remember(currentSelection) { currentSelection.swappedEndpoints() }
+
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress && revealState.currentValue != RevealValue.Covered) {
+            coroutineScope.launch {
+                revealState.animateTo(RevealValue.Covered)
+            }
+        }
+    }
+
+    SwipeToReveal(
+        primaryAction = {
+            PrimaryActionButton(
+                onClick = { onSwapRoute(swappedSelection) },
+                icon = {
+                    Icon(
+                        painter = painterResource(id = android.R.drawable.ic_menu_rotate),
+                        contentDescription = "Swap direction",
+                    )
+                },
+                text = { Text("Swap") },
+                modifier = Modifier
+                    .height(SwipeToRevealDefaults.LargeActionButtonHeight)
+                    .testTag(UiTestTags.QUICK_SWITCH_SWAP_BUTTON),
+            )
+        },
+        secondaryAction = {
+            SecondaryActionButton(
+                onClick = onOpenRouteSetup,
+                icon = {
+                    Icon(
+                        painter = painterResource(id = android.R.drawable.ic_menu_edit),
+                        contentDescription = "Edit route",
+                    )
+                },
+                modifier = Modifier
+                    .height(SwipeToRevealDefaults.LargeActionButtonHeight)
+                    .testTag(UiTestTags.QUICK_SWITCH_EDIT_BUTTON),
+            )
+        },
+        onSwipePrimaryAction = { onSwapRoute(swappedSelection) },
+        revealState = revealState,
+        modifier = Modifier
+            .transformedHeight(this, transformationSpec)
+            .graphicsLayer {
+                with(transformationSpec) {
+                    applyContainerTransformation(scrollProgress)
+                }
+                compositingStrategy = CompositingStrategy.ModulateAlpha
+                clip = false
+            },
+    ) {
+        Card(
+            onClick = onOpenRouteSetup,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(UiTestTags.QUICK_SWITCH_CURRENT_ROUTE_CARD)
+                .semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction("Edit route") {
+                            onOpenRouteSetup()
+                            true
+                        },
+                        CustomAccessibilityAction("Swap direction") {
+                            onSwapRoute(swappedSelection)
+                            true
+                        },
+                    )
+                },
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+        ) {
+            Text(
+                text = "Current route",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = currentSelection.routeSummaryLabel,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Text(
+                text = currentSelection.favoriteSummaryLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
 }
 
 @Composable

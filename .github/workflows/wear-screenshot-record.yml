@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Checkout Sources
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Determine Whether Screenshot Recording Is Needed
         id: changes

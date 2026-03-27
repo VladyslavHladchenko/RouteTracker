@@ -25,6 +25,7 @@
 - Keep changes focused. Do not mix unrelated refactors into feature or bug-fix work.
 - Preserve existing UI and architecture patterns unless the task explicitly calls for redesign.
 - Keep `README.md` human-facing. Put agent-only workflow, validation, and execution policy in `AGENTS.md` or `docs/ci.md` instead of expanding `README.md` with Codex-specific instructions.
+- For visible Wear UI work, follow the prototype-first contributor workflow in `docs/ui-prototyping-workflow.md`: Figma frame first, previewable fake-state surface second, screenshots/tests before PR.
 - Prefer repo-tracked instructions over local-only setup. Use repo-tracked skills when they match the task, especially `.codex/skills/android-wear-os-dev`. Do not depend on ignored local files such as `.android-local/`, `.gradle-local/`, or `gradlew-local.ps1`.
 - Do not commit or push directly to protected `main`. Work on a short-lived task branch and deliver changes through a pull request.
 - In local desktop and local CLI Codex sessions, rely on GitHub Actions for validation by default. Do not run local Gradle, lint, unit, screenshot, or emulator validation unless the user explicitly asks for local execution or GitHub cannot answer a blocking question.
@@ -90,7 +91,11 @@ Targeted commands:
 ## Wear-specific expectations
 
 - Default to the `wear` module unless the task clearly concerns `mobile` or shared Gradle/configuration files.
+- Android Studio is required for contributors doing Wear UI work because Compose Preview, UI Check, Run Preview, and Live Edit are part of the standard workflow.
 - Respect round-screen constraints. Watch for clipped labels, off-screen actions, and overly tall cards.
+- Every visible Wear surface should have a discoverable preview entry point or the sanctioned tile/complication preview path.
+- Shared fake preview data belongs under `wear/src/main/java/com/example/routetracker/presentation/preview/` and should be reused by screenshot tests.
+- Preview, Figma frame, and screenshot names should use the same `surface_state` naming.
 - For changes to departures, trip details, route setup, or other visible Wear UI, update tests and screenshots together when behavior or visuals change.
 
 ## PR expectations
@@ -100,9 +105,11 @@ Targeted commands:
 - There should always be an open PR for active work. Do not leave a task branch without a PR once there is meaningful progress to review.
 - Summaries should state the user-visible change, validation performed, and any remaining limitation.
 - After each push, update the PR description so it matches the current behavior, validation, and remaining limitations.
+- For visible Wear UI changes, the PR description must include the exact Figma frame link and the list of touched Wear surfaces.
 - After each meaningful unit of work, push the branch and watch CI for the new PR head.
 - If CI fails, investigate the reported failure rather than bypassing or weakening checks.
 - If work started from an issue or PR comment, keep follow-up work tied to that context and address review comments directly.
+- If work creates/changes anything visually - the screenshots must be embedded into the PR description.
 
 ## Review guidelines
 

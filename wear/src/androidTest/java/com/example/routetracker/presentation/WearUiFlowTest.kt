@@ -278,12 +278,13 @@ class WearUiFlowTest {
 
         setRouteTrackerContent {
             DepartureDetailsScreen(
-                selection = selection,
-                departure = departure,
-                routeRepo = routeRepo,
-                currentSystemTime = ZonedDateTime.now(),
-                showSecondsEnabled = false,
-                isRefreshing = false,
+                uiState = routeRepo.buildDepartureDetailsUiState(
+                    selection = selection,
+                    departure = departure,
+                    currentSystemTime = ZonedDateTime.now(),
+                    showSecondsEnabled = false,
+                    isRefreshing = false,
+                ),
                 onRefresh = { refreshCount += 1 },
                 onDismiss = {},
             )

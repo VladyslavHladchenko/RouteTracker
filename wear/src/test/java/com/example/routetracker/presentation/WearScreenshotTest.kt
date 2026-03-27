@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.wear.protolayout.StateBuilders
 import androidx.wear.compose.material3.TimeSource
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.tiles.DeviceParametersBuilders
@@ -649,15 +650,16 @@ class WearScreenshotTest {
         val resources = tileResourcesForPreview(resourcesRequest)
         val renderer = TileRenderer(
             composeRule.activity,
-            layout,
-            resources,
             MoreExecutors.directExecutor(),
-            TileRenderer.LoadActionListener { _ -> },
-        )
+        ) { _: StateBuilders.State -> }
         val parent = FrameLayout(composeRule.activity).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
         }
-        val view = renderer.inflate(parent)
+        val view = renderer.inflateAsync(
+            layout,
+            resources,
+            parent,
+        ).get()
         attachAndMeasureView(parent, view, width, height)
         return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
             parent.draw(Canvas(bitmap))

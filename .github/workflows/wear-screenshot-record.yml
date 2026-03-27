@@ -7,6 +7,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - converted_to_draft
   push:
     branches:
       - main
@@ -32,26 +33,78 @@ jobs:
       - name: Checkout Sources
         uses: actions/checkout@v5
 
+      - name: Determine Whether Screenshot Recording Is Needed
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_record=true" >> "$GITHUB_OUTPUT"
+            echo "reason=manual-dispatch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+          fi
+
+          if [[ -z "$base_sha" || "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
+            echo "should_record=true" >> "$GITHUB_OUTPUT"
+            echo "reason=no-base-sha" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+          echo "Changed files:"
+          if [[ -n "$changed_files" ]]; then
+            printf '%s\n' "$changed_files"
+          else
+            echo "(none)"
+          fi
+
+          if printf '%s\n' "$changed_files" | grep -Eq '^(wear/|gradle/|\.github/workflows/android-ci\.yml$|\.github/workflows/wear-screenshot-record\.yml$|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|gradlew$|gradlew\.bat$)'; then
+            echo "should_record=true" >> "$GITHUB_OUTPUT"
+            echo "reason=wear-or-build-files-changed" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_record=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no-wear-screenshot-relevant-changes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip Screenshot Recording
+        if: steps.changes.outputs.should_record != 'true'
+        run: |
+          echo "Skipping Wear screenshot recording because no wear or build-relevant files changed."
+
       - name: Make Gradle Wrapper Executable
+        if: steps.changes.outputs.should_record == 'true'
         run: chmod +x ./gradlew
 
       - name: Set Up JDK 21
+        if: steps.changes.outputs.should_record == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Set Up Gradle
+        if: steps.changes.outputs.should_record == 'true'
         uses: gradle/actions/setup-gradle@v5
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       - name: Set Up Android SDK
+        if: steps.changes.outputs.should_record == 'true'
         uses: android-actions/setup-android@v3
         with:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36"
 
       - name: Record Wear Screenshots
+        if: steps.changes.outputs.should_record == 'true'
         run: >
           ./gradlew
           --stacktrace
@@ -63,7 +116,7 @@ jobs:
           -Proborazzi.test.record=true
 
       - name: Upload Screenshot Artifacts
-        if: always()
+        if: always() && steps.changes.outputs.should_record == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: wear-screenshots

@@ -7,6 +7,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - converted_to_draft
   push:
     branches:
       - main
@@ -32,35 +33,100 @@ jobs:
       - name: Checkout Sources
         uses: actions/checkout@v5
 
+      - name: Determine Whether UI Tests Should Run
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=manual-dispatch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.pull_request.draft }}" == "true" ]]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=draft-pr" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+          fi
+
+          if [[ -z "$base_sha" || "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=no-base-sha" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+          echo "Changed files:"
+          if [[ -n "$changed_files" ]]; then
+            printf '%s\n' "$changed_files"
+          else
+            echo "(none)"
+          fi
+
+          if printf '%s\n' "$changed_files" | grep -Eq '^(wear/|gradle/|\.github/workflows/android-ci\.yml$|\.github/workflows/wear-ui-tests\.yml$|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|gradlew$|gradlew\.bat$)'; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=wear-or-build-files-changed" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no-wear-ui-test-relevant-changes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip Wear UI Tests
+        if: steps.changes.outputs.should_run != 'true'
+        run: |
+          if [[ "${{ steps.changes.outputs.reason }}" == "draft-pr" ]]; then
+            echo "Skipping Wear UI tests on draft PR."
+            echo "Full emulator validation runs after the PR is marked ready for review."
+          else
+            echo "Skipping Wear UI tests because no wear or build-relevant files changed."
+          fi
+
       - name: Make Gradle Wrapper Executable
+        if: steps.changes.outputs.should_run == 'true'
         run: chmod +x ./gradlew
 
       - name: Set Up JDK 21
+        if: steps.changes.outputs.should_run == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Set Up Gradle
+        if: steps.changes.outputs.should_run == 'true'
         uses: gradle/actions/setup-gradle@v5
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       - name: Set Up Android SDK
+        if: steps.changes.outputs.should_run == 'true'
         uses: android-actions/setup-android@v3
         with:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36 emulator system-images;android-36;android-wear-signed;x86_64"
 
       - name: Enable KVM Access
+        if: steps.changes.outputs.should_run == 'true'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
       - name: Create Wear AVD
+        if: steps.changes.outputs.should_run == 'true'
         run: echo "no" | avdmanager create avd --force --name wear-ci --package "system-images;android-36;android-wear-signed;x86_64"
 
       - name: Start Wear Emulator
+        if: steps.changes.outputs.should_run == 'true'
         run: |
           export HOME="$GITHUB_WORKSPACE"
           export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
@@ -88,6 +154,7 @@ jobs:
           adb shell input keyevent 82 || true
 
       - name: Run Wear Instrumented Tests
+        if: steps.changes.outputs.should_run == 'true'
         run: >
           ./gradlew
           --stacktrace
@@ -96,11 +163,11 @@ jobs:
           :wear:connectedDebugAndroidTest
 
       - name: Stop Wear Emulator
-        if: always()
+        if: always() && steps.changes.outputs.should_run == 'true'
         run: adb -s emulator-5554 emu kill || true
 
       - name: Upload UI Test Reports
-        if: always()
+        if: always() && steps.changes.outputs.should_run == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: wear-ui-test-reports
@@ -112,7 +179,7 @@ jobs:
             wear/build/test-results/**
 
       - name: Upload Emulator Log
-        if: always()
+        if: always() && steps.changes.outputs.should_run == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: wear-ui-emulator-log

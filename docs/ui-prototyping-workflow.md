@@ -12,9 +12,9 @@ The `mobile` module keeps building, but it is outside this workflow for now.
 
 ## Tooling
 
-Required for UI contributors:
+Default workflow:
 
-- Android Studio Panda 2 `2025.3.2` or newer
+- GitHub pull requests plus CI screenshot artifacts
 
 Recommended:
 
@@ -22,7 +22,7 @@ Recommended:
 
 Optional:
 
-- Figma for human-edited visual references or alternate design exploration
+- Android Studio Panda 2 `2025.3.2` or newer for local Compose Preview, UI Check, Run Preview, and Live Edit
 - Wear OS emulator when hardware is unavailable
 
 Not used in this repo for screenshot baselines:
@@ -34,22 +34,25 @@ Roborazzi remains the only committed screenshot-baseline system.
 ## Required Flow
 
 1. Build or update a previewable Wear surface from fake state first.
-2. Review the surface locally in Android Studio using:
-   - Compose Preview
-   - UI Check
-   - Run Preview
-   - Live Edit when motion or touch behavior matters
-3. Use Figma only when it adds value for human review or alternate design exploration.
-4. Update screenshot baselines and tests when the visual output changes.
-5. Open or update the PR with:
+2. Open or update a draft PR and use CI screenshot artifacts as the primary review surface.
+3. Iterate on the fake-state surface and screenshot outputs until the visuals are right.
+4. Use Android Studio locally only when Compose Preview, UI Check, Run Preview, or Live Edit will save time.
+5. Mark the PR ready for review when full validation should run.
+6. Update screenshot baselines and tests when the visual output changes.
+7. Open or update the PR with:
    - touched Wear surfaces
    - embedded screenshots for visual changes
    - validation performed
-   - exact Figma frame link when Figma was part of the review
+
+## PR States
+
+- Draft PRs are the default state for visible Wear UI prototyping.
+- Draft PRs keep `Wear Screenshot Record` active, reduce `Android CI` to smoke validation, and skip `Wear UI Tests`.
+- Ready-for-review PRs run the full required validation set before merge.
 
 ## Surface Inventory
 
-Use the same shared surface inventory across previews, screenshots, and optional Figma frames:
+Use the same shared surface inventory across previews and screenshots:
 
 - `board`
 - `settings`
@@ -63,7 +66,7 @@ Use the same shared surface inventory across previews, screenshots, and optional
 - `tile`
 - `complication`
 
-Preview functions and screenshot files should use the same `surface_state` naming. Optional Figma frames should match when used, for example:
+Preview functions and screenshot files should use the same `surface_state` naming, for example:
 
 - `board_loading`
 - `quick_switch_empty`
@@ -87,6 +90,11 @@ CI stays the same:
 - `Android CI`
 - `Wear Screenshot Record`
 - `Wear UI Tests`
+
+PR state changes how those checks behave:
+
+- draft PRs: screenshot-first review with reduced CI cost
+- ready-for-review PRs: full merge validation
 
 For visual changes:
 

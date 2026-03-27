@@ -1,5 +1,7 @@
 package com.example.routetracker.presentation
 
+// This file is intentionally used to exercise CI screenshot workflows.
+
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas

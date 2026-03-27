@@ -643,10 +643,12 @@ class WearScreenshotTest {
             snapshot = snapshot,
             showSecondsEnabled = false,
         )
-        val layout = checkNotNull(tile.tileTimeline)
-            .timelineEntries
-            .first()
-            .layout
+        val layout = checkNotNull(
+            checkNotNull(tile.tileTimeline)
+                .timelineEntries
+                .first()
+                .layout,
+        )
         val resources = tileResourcesForPreview(resourcesRequest)
         val renderer = TileRenderer(
             composeRule.activity,

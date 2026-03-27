@@ -115,6 +115,7 @@ dependencies {
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.junit)
+    testImplementation(libs.androidx.tiles.renderer)
     testImplementation(libs.androidx.watchface.complications.rendering)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)

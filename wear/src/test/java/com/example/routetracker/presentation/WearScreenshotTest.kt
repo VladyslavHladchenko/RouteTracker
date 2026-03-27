@@ -4,13 +4,16 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.Image
-import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,23 +24,24 @@ import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.wear.compose.material3.TimeSource
 import androidx.wear.compose.material3.TimeText
+import androidx.wear.tiles.DeviceParametersBuilders
+import androidx.wear.tiles.RequestBuilders
+import androidx.wear.tiles.renderer.TileRenderer
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.rendering.ComplicationDrawable
 import com.example.routetracker.complication.MainComplicationService
-import com.example.routetracker.data.DepartureRefreshFailureKind
-import com.example.routetracker.data.LineSelection
-import com.example.routetracker.data.RouteRepository
-import com.example.routetracker.data.RouteSelection
-import com.example.routetracker.data.StopSelection
+import com.example.routetracker.presentation.preview.WearPreviewFixtures
 import com.example.routetracker.presentation.theme.RouteTrackerTheme
+import com.example.routetracker.tile.buildPreviewTile
+import com.example.routetracker.tile.tileResourcesForPreview
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.RoborazziTaskType
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.google.common.util.concurrent.MoreExecutors
 import java.io.File
 import java.time.ZoneId
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,163 +58,157 @@ class WearScreenshotTest {
     @Test
     @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
     fun smallRound_boardWithDepartures() {
-        val selection = sampleAnyPlatformSelection()
-        val snapshot = previewSnapshot(selection)
-
-        setBoardScreenContent(
-            selection = selection,
-            snapshot = snapshot,
-            currentSystemTime = snapshot.fetchedAt.plusSeconds(8),
-            autoUpdatesEnabled = true,
-            isRefreshing = false,
-        )
+        setBoardScreenContent(boardCase("Populated"))
         captureScreen("small-round/board_with_departures.png")
     }
 
     @Test
     @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
     fun smallRound_boardWithPlatformAndDelay() {
-        val selection = sampleAnyPlatformSelection()
-        val snapshot = previewSnapshot(selection)
-        val departure = snapshot.departures.first().copy(
-            boardedStopId = "origin-stop-2",
-            boardedPlatformLabel = "Platform 2",
-            delayMinutes = 1,
-        )
-
-        setBoardScreenContent(
-            selection = selection,
-            snapshot = snapshot.copy(departures = listOf(departure)),
-            currentSystemTime = snapshot.fetchedAt.plusSeconds(8),
-            autoUpdatesEnabled = true,
-            isRefreshing = false,
-        )
+        setBoardScreenContent(boardCase("Platform Delay"))
         captureScreen("small-round/board_with_platform_delay.png")
     }
 
     @Test
     @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
     fun smallRound_boardWithPinnedPlatformAndDelay() {
-        val selection = samplePinnedSelection()
-        val snapshot = previewSnapshot(selection)
-        val departure = snapshot.departures.first().copy(
-            boardedStopId = "origin-stop-2",
-            boardedPlatformLabel = "Platform 2",
-            delayMinutes = 1,
-        )
-
-        setBoardScreenContent(
-            selection = selection,
-            snapshot = snapshot.copy(departures = listOf(departure)),
-            currentSystemTime = snapshot.fetchedAt.plusSeconds(8),
-            autoUpdatesEnabled = true,
-            isRefreshing = false,
-        )
+        setBoardScreenContent(boardCase("Pinned Platform Delay"))
         captureScreen("small-round/board_with_pinned_platform_delay.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_boardLongLabels() {
+        setBoardScreenContent(boardCase("Long Labels"))
+        captureScreen("small-round/board_long_labels.png")
     }
 
     @Test
     @Config(qualifiers = LARGE_ROUND_QUALIFIERS)
     fun largeRound_boardLoadingState() {
-        val selection = sampleAnyPlatformSelection()
-        val snapshot = previewSnapshot(selection)
-
-        setBoardScreenContent(
-            selection = selection,
-            snapshot = null,
-            currentSystemTime = snapshot.fetchedAt,
-            autoUpdatesEnabled = true,
-            isRefreshing = true,
-        )
+        setBoardScreenContent(boardCase("Loading"))
         captureScreen("large-round/board_loading_state.png")
     }
 
     @Test
     @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
     fun smallRound_boardPausedState() {
-        val selection = sampleAnyPlatformSelection()
-        val snapshot = previewSnapshot(selection).copy(isStale = true, errorMessage = "Updates paused.")
-
-        setBoardScreenContent(
-            selection = selection,
-            snapshot = snapshot,
-            currentSystemTime = snapshot.fetchedAt.plusSeconds(12),
-            autoUpdatesEnabled = false,
-            isRefreshing = false,
-        )
+        setBoardScreenContent(boardCase("Paused"))
         captureScreen("small-round/board_paused_state.png")
     }
 
     @Test
     @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
-    fun smallRound_boardCachedState() {
-        val selection = sampleAnyPlatformSelection()
-        val snapshot = previewSnapshot(selection).copy(isStale = true)
+    fun smallRound_boardRateLimitedState() {
+        setBoardScreenContent(boardCase("Rate Limited"))
+        captureScreen("small-round/board_rate_limited_state.png")
+    }
 
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_boardCachedState() {
+        val populatedCase = boardCase("Populated")
+        val snapshot = checkNotNull(populatedCase.snapshot).copy(isStale = true)
         setBoardScreenContent(
-            selection = selection,
-            snapshot = snapshot,
-            currentSystemTime = snapshot.fetchedAt.plusSeconds(35),
-            autoUpdatesEnabled = true,
-            isRefreshing = false,
+            populatedCase.copy(
+                snapshot = snapshot,
+                currentSystemTime = snapshot.fetchedAt.plusSeconds(35),
+            ),
         )
         captureScreen("small-round/board_cached_state.png")
     }
 
     @Test
     @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
-    fun smallRound_boardRateLimitedState() {
-        val selection = sampleAnyPlatformSelection()
-        val snapshot = previewSnapshot(selection).copy(
-            isStale = true,
-            errorMessage = "Showing cached data. Rate limited.",
-            refreshFailureKind = DepartureRefreshFailureKind.RATE_LIMITED,
-        )
-
-        setBoardScreenContent(
-            selection = selection,
-            snapshot = snapshot,
-            currentSystemTime = snapshot.fetchedAt.plusSeconds(35),
-            autoUpdatesEnabled = true,
-            isRefreshing = false,
-        )
-        captureScreen("small-round/board_rate_limited_state.png")
-    }
-
-    @Test
-    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
     fun smallRound_boardErrorState() {
-        val selection = sampleAnyPlatformSelection()
-        val snapshot = previewSnapshot(selection).copy(
+        val populatedCase = boardCase("Populated")
+        val snapshot = checkNotNull(populatedCase.snapshot).copy(
             departures = emptyList(),
             isStale = true,
             errorMessage = "Unable to load live departures.",
-            refreshFailureKind = DepartureRefreshFailureKind.OTHER,
+            refreshFailureKind = com.example.routetracker.data.DepartureRefreshFailureKind.OTHER,
         )
-
         setBoardScreenContent(
-            selection = selection,
-            snapshot = snapshot,
-            currentSystemTime = snapshot.fetchedAt.plusSeconds(35),
-            autoUpdatesEnabled = true,
-            isRefreshing = false,
+            populatedCase.copy(
+                snapshot = snapshot,
+                departures = emptyList(),
+                currentSystemTime = snapshot.fetchedAt.plusSeconds(35),
+            ),
         )
         captureScreen("small-round/board_error_state.png")
     }
 
     @Test
     @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
-    fun smallRound_quickSwitchFavorites() {
-        val currentSelection = samplePinnedSelection()
-        val favoriteRoutes = listOf(
-            currentSelection,
-            sampleAnyPlatformSelection().copy(line = null),
-        )
+    fun smallRound_settingsDefault() {
+        val previewData = WearPreviewFixtures.settingsData()
+        setRouteTrackerContent {
+            SettingsScreen(
+                showSecondsEnabled = previewData.showSecondsEnabled,
+                detailsDialogAutoRefreshEnabled = previewData.detailsDialogAutoRefreshEnabled,
+                verifiedMatchCount = previewData.verifiedMatchCount,
+                transitCatalogLastRefreshLabel = previewData.transitCatalogLastRefreshLabel,
+                liveSnapshotCacheLabel = previewData.liveSnapshotCacheLabel,
+                gtfsTripDetailCacheLabel = previewData.gtfsTripDetailCacheLabel,
+                vehiclePositionCacheLabel = previewData.vehiclePositionCacheLabel,
+                apiKeySourceLabel = previewData.apiKeySourceLabel,
+                onToggleShowSeconds = {},
+                onToggleDetailsDialogAutoRefresh = {},
+                onDecreaseVerifiedMatchCount = {},
+                onIncreaseVerifiedMatchCount = {},
+                onRefreshTransitCatalog = {},
+                onCycleLiveSnapshotCache = {},
+                onCycleGtfsTripDetailCache = {},
+                onCycleVehiclePositionCache = {},
+                onEditApiKey = {},
+                onDismiss = {},
+            )
+        }
+        captureScreen("small-round/settings_default.png")
+    }
 
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_apiKeySettingsOverride() {
+        val previewCase = WearPreviewFixtures.apiKeyCases().first { it.name == "Watch Override" }
+        setRouteTrackerContent(showTimeText = false) {
+            ApiKeySettingsScreen(
+                value = previewCase.value,
+                sourceLabel = previewCase.sourceLabel,
+                onValueChange = {},
+                onSave = {},
+                onUseBuiltIn = {},
+                onDismiss = {},
+            )
+        }
+        captureScreen("small-round/settings_api_key.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_apiKeySettingsBuiltIn() {
+        val previewCase = WearPreviewFixtures.apiKeyCases().first { it.name == "Built In" }
+        setRouteTrackerContent(showTimeText = false) {
+            ApiKeySettingsScreen(
+                value = previewCase.value,
+                sourceLabel = previewCase.sourceLabel,
+                onValueChange = {},
+                onSave = {},
+                onUseBuiltIn = {},
+                onDismiss = {},
+            )
+        }
+        captureScreen("small-round/settings_api_key_built_in.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_quickSwitchFavorites() {
+        val previewCase = WearPreviewFixtures.quickSwitchCases().first { it.name == "Favorites" }
         setRouteTrackerContent {
             QuickRouteSwitchScreen(
-                currentSelection = currentSelection,
-                favoriteRoutes = favoriteRoutes,
+                currentSelection = previewCase.currentSelection,
+                favoriteRoutes = previewCase.favoriteRoutes,
                 onSwapRoute = {},
                 onApplyFavorite = {},
                 onEditFavorite = {},
@@ -223,33 +221,33 @@ class WearScreenshotTest {
 
     @Test
     @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
-    fun smallRound_apiKeySettings() {
+    fun smallRound_quickSwitchEmpty() {
+        val previewCase = WearPreviewFixtures.quickSwitchCases().first { it.name == "Empty" }
         setRouteTrackerContent {
-            ApiKeySettingsScreen(
-                value = "pid-demo-key-1234",
-                sourceLabel = "Watch override",
-                onValueChange = {},
-                onSave = {},
-                onUseBuiltIn = {},
-                onDismiss = {},
+            QuickRouteSwitchScreen(
+                currentSelection = previewCase.currentSelection,
+                favoriteRoutes = previewCase.favoriteRoutes,
+                onSwapRoute = {},
+                onApplyFavorite = {},
+                onEditFavorite = {},
+                onDeleteFavorite = {},
+                onOpenRouteSetup = {},
             )
         }
-        captureScreen("small-round/settings_api_key.png")
+        captureScreen("small-round/quick_switch_empty.png")
     }
 
     @Test
     @Config(qualifiers = LARGE_ROUND_QUALIFIERS)
     fun largeRound_routeSetupHome() {
-        val currentSelection = samplePinnedSelection()
-        val favorites = listOf(currentSelection, sampleAnyPlatformSelection().copy(line = null))
-
+        val previewCase = WearPreviewFixtures.routeSetupHomeCases().first { it.name == "Normal" }
         setRouteTrackerContent {
             RouteSetupHomePage(
-                draftSelection = currentSelection,
-                favoriteRoutes = favorites,
-                isEditingFavorite = false,
-                isCatalogLoading = false,
-                catalogError = null,
+                draftSelection = previewCase.draftSelection,
+                favoriteRoutes = previewCase.favoriteRoutes,
+                isEditingFavorite = previewCase.isEditingFavorite,
+                isCatalogLoading = previewCase.isCatalogLoading,
+                catalogError = previewCase.catalogError,
                 onChooseOrigin = {},
                 onChooseDestination = {},
                 onChooseLine = {},
@@ -264,29 +262,216 @@ class WearScreenshotTest {
     }
 
     @Test
+    @Config(qualifiers = LARGE_ROUND_QUALIFIERS)
+    fun largeRound_routeSetupLoading() {
+        val previewCase = WearPreviewFixtures.routeSetupHomeCases().first { it.name == "Loading" }
+        setRouteTrackerContent {
+            RouteSetupHomePage(
+                draftSelection = previewCase.draftSelection,
+                favoriteRoutes = previewCase.favoriteRoutes,
+                isEditingFavorite = previewCase.isEditingFavorite,
+                isCatalogLoading = previewCase.isCatalogLoading,
+                catalogError = previewCase.catalogError,
+                onChooseOrigin = {},
+                onChooseDestination = {},
+                onChooseLine = {},
+                onToggleFavorite = {},
+                onApplyFavorite = {},
+                onApplyRoute = {},
+                onRetryCatalog = {},
+                onClose = {},
+            )
+        }
+        captureScreen("large-round/route_setup_loading.png")
+    }
+
+    @Test
+    @Config(qualifiers = LARGE_ROUND_QUALIFIERS)
+    fun largeRound_routeSetupError() {
+        val previewCase = WearPreviewFixtures.routeSetupHomeCases().first { it.name == "Error" }
+        setRouteTrackerContent {
+            RouteSetupHomePage(
+                draftSelection = previewCase.draftSelection,
+                favoriteRoutes = previewCase.favoriteRoutes,
+                isEditingFavorite = previewCase.isEditingFavorite,
+                isCatalogLoading = previewCase.isCatalogLoading,
+                catalogError = previewCase.catalogError,
+                onChooseOrigin = {},
+                onChooseDestination = {},
+                onChooseLine = {},
+                onToggleFavorite = {},
+                onApplyFavorite = {},
+                onApplyRoute = {},
+                onRetryCatalog = {},
+                onClose = {},
+            )
+        }
+        captureScreen("large-round/route_setup_error.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_stationSearchResults() {
+        val previewCase = WearPreviewFixtures.stationSearchCases().first { it.name == "Results" }
+        setRouteTrackerContent(showTimeText = false) {
+            RouteStationSearchPage(
+                target = previewCase.target,
+                query = previewCase.query,
+                results = previewCase.results,
+                isCatalogLoading = previewCase.isCatalogLoading,
+                catalogError = previewCase.catalogError,
+                onQueryChange = {},
+                onSelectStation = {},
+                onRetryCatalog = {},
+                onBack = {},
+            )
+        }
+        captureScreen("small-round/station_search_results.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_stationSearchEmpty() {
+        val previewCase = WearPreviewFixtures.stationSearchCases().first { it.name == "Empty Query" }
+        setRouteTrackerContent(showTimeText = false) {
+            RouteStationSearchPage(
+                target = previewCase.target,
+                query = previewCase.query,
+                results = previewCase.results,
+                isCatalogLoading = previewCase.isCatalogLoading,
+                catalogError = previewCase.catalogError,
+                onQueryChange = {},
+                onSelectStation = {},
+                onRetryCatalog = {},
+                onBack = {},
+            )
+        }
+        captureScreen("small-round/station_search_empty.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_stationSearchError() {
+        val previewCase = WearPreviewFixtures.stationSearchCases().first { it.name == "Error" }
+        setRouteTrackerContent(showTimeText = false) {
+            RouteStationSearchPage(
+                target = previewCase.target,
+                query = previewCase.query,
+                results = previewCase.results,
+                isCatalogLoading = previewCase.isCatalogLoading,
+                catalogError = previewCase.catalogError,
+                onQueryChange = {},
+                onSelectStation = {},
+                onRetryCatalog = {},
+                onBack = {},
+            )
+        }
+        captureScreen("small-round/station_search_error.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_platformPickerStress() {
+        val previewCase = WearPreviewFixtures.platformPickerCases().first()
+        setRouteTrackerContent(showTimeText = false) {
+            RoutePlatformPickerPage(
+                target = previewCase.target,
+                station = previewCase.station,
+                onSelectPlatform = {},
+                onBack = {},
+            )
+        }
+        captureScreen("small-round/platform_picker_stress.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_lineSearchAnyLine() {
+        val previewCase = WearPreviewFixtures.lineSearchCases().first { it.name == "Any Line" }
+        setRouteTrackerContent(showTimeText = false) {
+            RouteLineSearchPage(
+                query = previewCase.query,
+                results = previewCase.results,
+                isCatalogLoading = previewCase.isCatalogLoading,
+                catalogError = previewCase.catalogError,
+                onQueryChange = {},
+                onSelectAnyLine = {},
+                onSelectLine = {},
+                onRetryCatalog = {},
+                onBack = {},
+            )
+        }
+        captureScreen("small-round/line_search_any_line.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_lineSearchResults() {
+        val previewCase = WearPreviewFixtures.lineSearchCases().first { it.name == "Results" }
+        setRouteTrackerContent(showTimeText = false) {
+            RouteLineSearchPage(
+                query = previewCase.query,
+                results = previewCase.results,
+                isCatalogLoading = previewCase.isCatalogLoading,
+                catalogError = previewCase.catalogError,
+                onQueryChange = {},
+                onSelectAnyLine = {},
+                onSelectLine = {},
+                onRetryCatalog = {},
+                onBack = {},
+            )
+        }
+        captureScreen("small-round/line_search_results.png")
+    }
+
+    @Test
     @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
     fun smallRound_tripDetails() {
-        val selection = sampleAnyPlatformSelection()
-        val snapshot = previewSnapshot(selection)
-        val routeRepo = RouteRepository(composeRule.activity)
-        val departure = snapshot.departures.first().copy(
-            boardedStopId = "origin-stop-2",
-            boardedPlatformLabel = "Platform 2",
-        )
-
+        val previewCase = WearPreviewFixtures.departureDetailsCases().first { it.name == "Vehicle Present" }
         setRouteTrackerContent {
             DepartureDetailsScreen(
-                selection = selection,
-                departure = departure,
-                routeRepo = routeRepo,
-                currentSystemTime = snapshot.fetchedAt,
-                showSecondsEnabled = false,
-                isRefreshing = false,
+                uiState = previewCase.uiState,
                 onRefresh = {},
                 onDismiss = {},
             )
         }
         captureScreen("small-round/trip_details.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_tripDetailsVehicleUnavailable() {
+        val previewCase = WearPreviewFixtures.departureDetailsCases().first { it.name == "Vehicle Unavailable" }
+        setRouteTrackerContent {
+            DepartureDetailsScreen(
+                uiState = previewCase.uiState,
+                onRefresh = {},
+                onDismiss = {},
+            )
+        }
+        captureScreen("small-round/trip_details_vehicle_unavailable.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_tilePopulated() {
+        setTilePreviewContent(
+            snapshot = WearPreviewFixtures.populatedTileSnapshot(),
+            width = SMALL_ROUND_SIZE_DP,
+            height = SMALL_ROUND_SIZE_DP,
+        )
+        captureScreen("small-round/tile_populated.png")
+    }
+
+    @Test
+    @Config(qualifiers = SMALL_ROUND_QUALIFIERS)
+    fun smallRound_tileFallback() {
+        setTilePreviewContent(
+            snapshot = WearPreviewFixtures.fallbackTileSnapshot(),
+            width = SMALL_ROUND_SIZE_DP,
+            height = SMALL_ROUND_SIZE_DP,
+        )
+        captureScreen("small-round/tile_fallback.png")
     }
 
     @Test
@@ -311,6 +496,8 @@ class WearScreenshotTest {
         captureScreen("large-round/complication_long_text_preview.png")
     }
 
+    private fun boardCase(name: String) = WearPreviewFixtures.boardCases().first { it.name == name }
+
     private fun captureScreen(relativePath: String) {
         composeRule.waitForIdle()
         composeRule.onRoot().captureRoboImage(
@@ -319,13 +506,18 @@ class WearScreenshotTest {
         )
     }
 
-    private fun setRouteTrackerContent(content: @Composable () -> Unit) {
+    private fun setRouteTrackerContent(
+        showTimeText: Boolean = true,
+        content: @Composable () -> Unit,
+    ) {
         composeRule.setContent {
             RouteTrackerTheme {
                 RoundScreenScreenshotFrame {
                     RouteTrackerAppScaffold(
                         timeText = {
-                            TimeText(timeSource = FixedTimeSource)
+                            if (showTimeText) {
+                                TimeText(timeSource = FixedTimeSource)
+                            }
                         },
                     ) {
                         content()
@@ -335,28 +527,21 @@ class WearScreenshotTest {
         }
     }
 
-    private fun setBoardScreenContent(
-        selection: RouteSelection,
-        snapshot: com.example.routetracker.data.DepartureSnapshot?,
-        currentSystemTime: ZonedDateTime,
-        autoUpdatesEnabled: Boolean,
-        isRefreshing: Boolean,
-    ) {
+    private fun setBoardScreenContent(previewCase: com.example.routetracker.presentation.preview.BoardPreviewCase) {
         setRouteTrackerContent {
             BoardScreen(
-                selection = selection,
-                departures = snapshot?.departures.orEmpty(),
-                snapshot = snapshot,
-                statusText = snapshotStatusText(
-                    snapshot = snapshot,
-                    autoUpdatesEnabled = autoUpdatesEnabled,
-                    isRefreshing = isRefreshing,
-                    updatedLabel = snapshot?.fetchedAt?.format(SCREENSHOT_STATUS_TIME_FORMATTER),
+                selection = previewCase.selection,
+                departures = previewCase.departures,
+                snapshot = previewCase.snapshot,
+                statusText = WearPreviewFixtures.statusText(
+                    snapshot = previewCase.snapshot,
+                    autoUpdatesEnabled = previewCase.autoUpdatesEnabled,
+                    isRefreshing = previewCase.isRefreshing,
                 ),
-                currentSystemTime = currentSystemTime,
+                currentSystemTime = previewCase.currentSystemTime,
                 showSecondsEnabled = false,
-                autoUpdatesEnabled = autoUpdatesEnabled,
-                isRefreshing = isRefreshing,
+                autoUpdatesEnabled = previewCase.autoUpdatesEnabled,
+                isRefreshing = previewCase.isRefreshing,
                 onOpenSettings = {},
                 onToggleAutoUpdates = {},
                 onOpenQuickRouteSwitch = {},
@@ -364,6 +549,27 @@ class WearScreenshotTest {
                 onRefresh = {},
                 animateFreshnessHalo = false,
             )
+        }
+    }
+
+    private fun setTilePreviewContent(
+        snapshot: com.example.routetracker.data.DepartureSnapshot,
+        width: Int,
+        height: Int,
+    ) {
+        val bitmap = renderTileBitmap(
+            snapshot = snapshot,
+            width = width,
+            height = height,
+        )
+        composeRule.setContent {
+            RoundScreenScreenshotFrame {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 
@@ -394,7 +600,6 @@ class WearScreenshotTest {
 
     @Composable
     private fun RoundScreenScreenshotFrame(content: @Composable () -> Unit) {
-        // Keep screenshot baselines honest by showing the same circular viewport as the watch.
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -408,6 +613,93 @@ class WearScreenshotTest {
                 content()
             }
         }
+    }
+
+    private fun renderTileBitmap(
+        snapshot: com.example.routetracker.data.DepartureSnapshot,
+        width: Int,
+        height: Int,
+    ): Bitmap {
+        val deviceParameters = DeviceParametersBuilders.DeviceParameters.Builder()
+            .setScreenWidthDp(width)
+            .setScreenHeightDp(height)
+            .setScreenDensity(1f)
+            .setDevicePlatform(DeviceParametersBuilders.DEVICE_PLATFORM_WEAR_OS)
+            .setScreenShape(DeviceParametersBuilders.SCREEN_SHAPE_ROUND)
+            .build()
+        val tileRequest = RequestBuilders.TileRequest.Builder()
+            .setTileId(1)
+            .setDeviceParameters(deviceParameters)
+            .build()
+        val resourcesRequest = RequestBuilders.ResourcesRequest.Builder()
+            .setTileId(1)
+            .setVersion("0")
+            .setDeviceParameters(deviceParameters)
+            .build()
+        val tile = buildPreviewTile(
+            requestParams = tileRequest,
+            context = composeRule.activity,
+            snapshot = snapshot,
+            showSecondsEnabled = false,
+        )
+        val layout = checkNotNull(tile.tileTimeline)
+            .timelineEntries
+            .first()
+            .layout
+        val resources = tileResourcesForPreview(resourcesRequest)
+        val renderer = TileRenderer(
+            composeRule.activity,
+            layout,
+            resources,
+            MoreExecutors.directExecutor(),
+            TileRenderer.LoadActionListener { _ -> },
+        )
+        val parent = FrameLayout(composeRule.activity).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+        val view = renderer.inflate(parent)
+        attachAndMeasureView(parent, view, width, height)
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            parent.draw(Canvas(bitmap))
+        }
+    }
+
+    private fun attachAndMeasureView(
+        parent: FrameLayout,
+        child: View,
+        width: Int,
+        height: Int,
+    ) {
+        if (child.parent == null) {
+            parent.addView(
+                child,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+        parent.measure(widthSpec, heightSpec)
+        parent.layout(0, 0, width, height)
+        child.measure(widthSpec, heightSpec)
+        child.layout(0, 0, width, height)
+    }
+
+    private fun renderComplicationBitmap(
+        complicationData: ComplicationData,
+        width: Int,
+        height: Int,
+    ): Bitmap {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val drawable = ComplicationDrawable(composeRule.activity).apply {
+            setBounds(Rect(0, 0, width, height))
+            currentTime = FIXED_NOW.toInstant()
+            setComplicationData(complicationData, false)
+        }
+        drawable.draw(Canvas(bitmap))
+        return bitmap
     }
 
     private fun screenshotFile(relativePath: String): File {
@@ -433,60 +725,6 @@ class WearScreenshotTest {
         }
     }
 
-    private fun renderComplicationBitmap(
-        complicationData: ComplicationData,
-        width: Int,
-        height: Int,
-    ): Bitmap {
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val drawable = ComplicationDrawable(composeRule.activity).apply {
-            setBounds(Rect(0, 0, width, height))
-            currentTime = FIXED_NOW.toInstant()
-            setComplicationData(complicationData, false)
-        }
-        drawable.draw(Canvas(bitmap))
-        return bitmap
-    }
-
-    private fun createSelection(
-        originPlatform: String? = null,
-        destinationPlatform: String? = null,
-        line: String? = "7",
-    ): RouteSelection {
-        return RouteSelection(
-            origin = StopSelection(
-                stationKey = "station:palmovka",
-                stationName = "Palmovka",
-                platformKey = originPlatform?.lowercase(),
-                platformLabel = originPlatform?.let { "Platform $it" },
-                stopIds = listOf("stop-a", "stop-b"),
-            ),
-            destination = StopSelection(
-                stationKey = "station:vrsovice",
-                stationName = "Nadrazi Vrsovice",
-                platformKey = destinationPlatform?.lowercase(),
-                platformLabel = destinationPlatform?.let { "Platform $it" },
-                stopIds = listOf("stop-c"),
-            ),
-            line = line?.let(::LineSelection),
-        )
-    }
-
-    private fun sampleAnyPlatformSelection(): RouteSelection = createSelection(
-        originPlatform = null,
-        destinationPlatform = null,
-        line = "7",
-    )
-
-    private fun samplePinnedSelection(): RouteSelection = createSelection(
-        originPlatform = "2",
-        destinationPlatform = "4",
-        line = "7",
-    )
-
-    private fun previewSnapshot(selection: RouteSelection) =
-        RouteRepository.previewSnapshot(selection = selection, now = FIXED_NOW)
-
     private object FixedTimeSource : TimeSource {
         @Composable
         override fun currentTime(): String = "18:30"
@@ -495,7 +733,7 @@ class WearScreenshotTest {
     private companion object {
         const val SMALL_ROUND_QUALIFIERS = "w220dp-h220dp-round"
         const val LARGE_ROUND_QUALIFIERS = "w280dp-h280dp-round"
-        val SCREENSHOT_STATUS_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+        const val SMALL_ROUND_SIZE_DP = 220
         val FIXED_NOW: ZonedDateTime = ZonedDateTime.of(
             2026,
             3,

@@ -24,6 +24,7 @@ import androidx.wear.tooling.preview.devices.WearDevices
 import com.example.routetracker.data.DepartureSnapshot
 import com.example.routetracker.data.RouteRepository
 import com.example.routetracker.presentation.MainActivity
+import com.example.routetracker.presentation.preview.WearPreviewFixtures
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -61,6 +62,8 @@ private fun resources(requestParams: ResourcesRequest): Resources {
         .build()
 }
 
+internal fun tileResourcesForPreview(requestParams: ResourcesRequest): Resources = resources(requestParams)
+
 private fun tile(
     requestParams: RequestBuilders.TileRequest,
     context: Context,
@@ -90,6 +93,18 @@ private fun tile(
         )
         .build()
 }
+
+internal fun buildPreviewTile(
+    requestParams: RequestBuilders.TileRequest,
+    context: Context,
+    snapshot: DepartureSnapshot,
+    showSecondsEnabled: Boolean,
+): TileBuilders.Tile = tile(
+    requestParams = requestParams,
+    context = context,
+    snapshot = snapshot,
+    showSecondsEnabled = showSecondsEnabled,
+)
 
 private fun MaterialScope.stackedDepartureLines(
     snapshot: DepartureSnapshot,
@@ -126,5 +141,21 @@ private fun MaterialScope.stackedDepartureLines(
 @Preview(device = WearDevices.SMALL_ROUND)
 @Preview(device = WearDevices.LARGE_ROUND)
 fun tilePreview(context: Context) = TilePreviewData(::resources) {
-    tile(it, context, RouteRepository.previewSnapshot(), false)
+    buildPreviewTile(
+        requestParams = it,
+        context = context,
+        snapshot = WearPreviewFixtures.populatedTileSnapshot(),
+        showSecondsEnabled = false,
+    )
+}
+
+@Preview(device = WearDevices.SMALL_ROUND)
+@Preview(device = WearDevices.LARGE_ROUND)
+fun tileFallbackPreview(context: Context) = TilePreviewData(::resources) {
+    buildPreviewTile(
+        requestParams = it,
+        context = context,
+        snapshot = WearPreviewFixtures.fallbackTileSnapshot(),
+        showSecondsEnabled = false,
+    )
 }

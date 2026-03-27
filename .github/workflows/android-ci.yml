@@ -7,6 +7,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - converted_to_draft
   push:
     branches:
       - main
@@ -34,7 +35,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine Whether Android Build Is Needed
+      - name: Determine Android Validation Mode
         id: changes
         shell: bash
         run: |
@@ -42,6 +43,9 @@ jobs:
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "validation_mode=full" >> "$GITHUB_OUTPUT"
+            echo "run_mobile_smoke=true" >> "$GITHUB_OUTPUT"
+            echo "run_wear_smoke=true" >> "$GITHUB_OUTPUT"
             echo "reason=manual-dispatch" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -56,6 +60,9 @@ jobs:
 
           if [[ -z "$base_sha" || "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "validation_mode=full" >> "$GITHUB_OUTPUT"
+            echo "run_mobile_smoke=true" >> "$GITHUB_OUTPUT"
+            echo "run_wear_smoke=true" >> "$GITHUB_OUTPUT"
             echo "reason=no-base-sha" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -68,11 +75,31 @@ jobs:
             echo "(none)"
           fi
 
+          run_mobile_smoke=false
+          if printf '%s\n' "$changed_files" | grep -Eq '^(mobile/|gradle/|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|gradlew$|gradlew\.bat$)'; then
+            run_mobile_smoke=true
+          fi
+
+          run_wear_smoke=false
+          if printf '%s\n' "$changed_files" | grep -Eq '^(wear/|gradle/|\.github/workflows/android-ci\.yml$|\.github/workflows/wear-screenshot-record\.yml$|\.github/workflows/wear-ui-tests\.yml$|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|gradlew$|gradlew\.bat$)'; then
+            run_wear_smoke=true
+          fi
+
+          echo "run_mobile_smoke=$run_mobile_smoke" >> "$GITHUB_OUTPUT"
+          echo "run_wear_smoke=$run_wear_smoke" >> "$GITHUB_OUTPUT"
+
           if printf '%s\n' "$changed_files" | grep -Eq '^(mobile/|wear/|gradle/|\.github/workflows/android-ci\.yml$|\.github/workflows/wear-screenshot-record\.yml$|\.github/workflows/wear-ui-tests\.yml$|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|gradlew$|gradlew\.bat$)'; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "reason=relevant-files-changed" >> "$GITHUB_OUTPUT"
+            if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.pull_request.draft }}" == "true" ]]; then
+              echo "validation_mode=draft" >> "$GITHUB_OUTPUT"
+              echo "reason=draft-pr-reduced-validation" >> "$GITHUB_OUTPUT"
+            else
+              echo "validation_mode=full" >> "$GITHUB_OUTPUT"
+              echo "reason=ready-for-review-or-main" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "validation_mode=skip" >> "$GITHUB_OUTPUT"
             echo "reason=docs-or-non-android-change" >> "$GITHUB_OUTPUT"
           fi
 
@@ -81,6 +108,13 @@ jobs:
         run: |
           echo "Skipping Android build because no Android-relevant files changed."
           echo "This keeps the required check green for docs, README, and other repo-only changes."
+
+      - name: Describe Draft Validation
+        if: steps.changes.outputs.validation_mode == 'draft'
+        run: |
+          echo "Draft PR detected."
+          echo "Running reduced Android CI smoke validation only."
+          echo "Full APK, lint, and unit-test validation will run after the PR is marked ready for review."
 
       - name: Make Gradle Wrapper Executable
         if: steps.changes.outputs.should_build == 'true'
@@ -129,9 +163,38 @@ jobs:
             echo "CI_DEBUG_KEY_PASSWORD=${DEBUG_KEY_PASSWORD:-${DEBUG_KEYSTORE_PASSWORD:-android}}"
           } >> "$GITHUB_ENV"
 
+      - name: Build Draft Smoke Targets
+        id: draft_smoke_build
+        if: steps.changes.outputs.validation_mode == 'draft'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          targets=()
+
+          if [[ "${{ steps.changes.outputs.run_mobile_smoke }}" == "true" ]]; then
+            targets+=(":mobile:assembleDebug")
+          fi
+
+          if [[ "${{ steps.changes.outputs.run_wear_smoke }}" == "true" ]]; then
+            targets+=(":wear:assembleDebug")
+          fi
+
+          if [[ "${#targets[@]}" -eq 0 ]]; then
+            echo "No smoke targets selected for draft validation."
+            exit 0
+          fi
+
+          ./gradlew \
+            --stacktrace \
+            --configuration-cache \
+            --configuration-cache-problems=warn \
+            "${targets[@]}"
+
       - name: Build APKs
         id: build_apks
-        if: steps.changes.outputs.should_build == 'true'
+        if: steps.changes.outputs.validation_mode == 'full'
         continue-on-error: true
         run: >
           ./gradlew
@@ -145,7 +208,7 @@ jobs:
 
       - name: Lint Wear
         id: lint_wear
-        if: steps.changes.outputs.should_build == 'true'
+        if: steps.changes.outputs.validation_mode == 'full'
         continue-on-error: true
         run: >
           ./gradlew
@@ -156,7 +219,7 @@ jobs:
 
       - name: Run Wear Unit Tests
         id: wear_unit_tests
-        if: steps.changes.outputs.should_build == 'true'
+        if: steps.changes.outputs.validation_mode == 'full'
         continue-on-error: true
         run: >
           ./gradlew
@@ -167,7 +230,7 @@ jobs:
           -Proborazzi.test.verify=true
 
       - name: Upload APKs
-        if: always() && steps.changes.outputs.should_build == 'true'
+        if: always() && steps.changes.outputs.validation_mode == 'full'
         uses: actions/upload-artifact@v6
         with:
           name: android-apks
@@ -183,7 +246,7 @@ jobs:
             wear/build/outputs/apk/androidTest/debug/output-metadata.json
 
       - name: Upload Reports
-        if: always() && steps.changes.outputs.should_build == 'true'
+        if: always() && steps.changes.outputs.validation_mode == 'full'
         uses: actions/upload-artifact@v6
         with:
           name: android-reports
@@ -205,19 +268,26 @@ jobs:
 
           failed=0
 
-          if [[ "${{ steps.build_apks.outcome }}" != "success" ]]; then
-            echo "Build APKs failed."
-            failed=1
-          fi
+          if [[ "${{ steps.changes.outputs.validation_mode }}" == "draft" ]]; then
+            if [[ "${{ steps.draft_smoke_build.outcome }}" != "success" ]]; then
+              echo "Draft smoke build failed."
+              failed=1
+            fi
+          else
+            if [[ "${{ steps.build_apks.outcome }}" != "success" ]]; then
+              echo "Build APKs failed."
+              failed=1
+            fi
 
-          if [[ "${{ steps.lint_wear.outcome }}" != "success" ]]; then
-            echo "Lint Wear failed."
-            failed=1
-          fi
+            if [[ "${{ steps.lint_wear.outcome }}" != "success" ]]; then
+              echo "Lint Wear failed."
+              failed=1
+            fi
 
-          if [[ "${{ steps.wear_unit_tests.outcome }}" != "success" ]]; then
-            echo "Run Wear Unit Tests failed."
-            failed=1
+            if [[ "${{ steps.wear_unit_tests.outcome }}" != "success" ]]; then
+              echo "Run Wear Unit Tests failed."
+              failed=1
+            fi
           fi
 
           if [[ "$failed" -ne 0 ]]; then

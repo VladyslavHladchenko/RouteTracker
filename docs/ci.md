@@ -2,15 +2,17 @@
 
 This project uses GitHub Actions on GitHub-hosted runners. The setup is split into one default CI workflow for fast feedback and two heavier Wear OS workflows that run automatically on pull requests, rerun on `main` after merge to refresh shared Gradle caches, and can also be launched manually.
 
+Draft pull requests are intentionally lighter than ready-for-review pull requests. Draft PRs are the default state for screenshot-first Wear UI prototyping. Ready-for-review PRs are the point where the full validation set should run before merge.
+
 Before merging a PR, all three workflows should have passed for the current head commit: `Android CI`, `Wear Screenshot Record`, and `Wear UI Tests`.
 
 ## Overview
 
 | Workflow | File | Trigger | Purpose |
 | --- | --- | --- | --- |
-| Android CI | `.github/workflows/android-ci.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Main build, lint, unit test, screenshot verification, artifact upload |
-| Wear Screenshot Record | `.github/workflows/wear-screenshot-record.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Re-record Roborazzi screenshot baselines and upload generated images |
-| Wear UI Tests | `.github/workflows/wear-ui-tests.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Boot a Wear emulator and run instrumented UI tests |
+| Android CI | `.github/workflows/android-ci.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Draft PRs get reduced smoke validation. Ready PRs, `main`, and manual runs get the full build, lint, and unit test flow. |
+| Wear Screenshot Record | `.github/workflows/wear-screenshot-record.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Upload screenshot artifacts for screenshot-first review on draft PRs and full screenshot recording on ready PRs. |
+| Wear UI Tests | `.github/workflows/wear-ui-tests.yml` | `pull_request`, `push` to `main`, `workflow_dispatch` | Skip draft PRs, then boot a Wear emulator and run instrumented UI tests once the PR is ready for review. |
 
 ## Shared CI setup
 
@@ -33,13 +35,15 @@ File: `.github/workflows/android-ci.yml`
 
 This is the default workflow for pull requests and pushes to `main`. It is designed to give a strong signal without paying emulator startup cost on every change.
 
+On draft pull requests with Android-relevant changes, it runs reduced smoke validation only. On ready-for-review pull requests, `push` to `main`, and manual dispatch, it runs the full validation flow.
+
 The workflow always reports a `Build And Test` check so it can be used with branch protection. For docs-only, README-only, and other non-Android changes, it exits early with a successful no-op result instead of running the Android toolchain.
 
 Within that one job, build, lint, and JVM test work are split into separate GitHub Actions steps so failures are easier to identify without paying the setup cost of separate jobs.
 
 `Android CI`, `Wear Screenshot Record`, and `Wear UI Tests` all enable Gradle configuration cache and provide an encrypted cache key to `gradle/actions/setup-gradle`, so runs on `main` can populate reusable configuration-cache entries and later non-default-branch runs can restore them in read-only mode. The two Wear workflows therefore rerun on `main` after merge to keep those heavier caches warm as well.
 
-It runs:
+Full mode runs:
 
 ```bash
 ./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :mobile:assembleDebug
@@ -47,6 +51,13 @@ It runs:
 ./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:assembleDebug
 ./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:assembleDebugAndroidTest
 ./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:testDebugUnitTest -Proborazzi.test.verify=true
+```
+
+Draft smoke mode runs one or both of these module assemble commands, depending on which app areas changed:
+
+```bash
+./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :mobile:assembleDebug
+./gradlew --stacktrace --configuration-cache --configuration-cache-problems=warn :wear:assembleDebug
 ```
 
 Artifacts uploaded:
@@ -58,7 +69,8 @@ If the optional stable debug-keystore secrets are configured, the debug APKs fro
 
 Use this workflow for:
 
-- regular PR validation
+- draft compile/smoke validation
+- regular ready-for-review validation
 - confirming the project still builds
 - catching lint and unit test regressions
 - verifying Roborazzi screenshots against committed baselines
@@ -78,13 +90,15 @@ The heavy Android steps run only when at least one Android-relevant path changed
 - `gradlew`
 - `gradlew.bat`
 
-Changes outside that set, such as `docs/**`, `README.md`, and other repository metadata, still get a green `Build And Test` check without doing a full Android build.
+Changes outside that set, such as `docs/**`, `README.md`, and other repository metadata, still get a green `Build And Test` check without doing an Android build.
+
+On draft pull requests, the smoke build only assembles the affected app module targets. For example, `mobile`-only draft changes do not assemble `wear`, and `wear`-only draft changes do not assemble `mobile`.
 
 ### Wear Screenshot Record
 
 File: `.github/workflows/wear-screenshot-record.yml`
 
-This workflow now runs on pull requests so its `Record Screenshots` job can be required by repository rulesets. It also runs on `push` to `main` so post-merge screenshot recording can refresh shared Gradle caches. `workflow_dispatch` remains available when you want to rerun screenshot recording on demand.
+This workflow runs on both draft and ready-for-review pull requests so its `Record Screenshots` job can be used as the primary screenshot review artifact during UI prototyping. It also runs on `push` to `main` so post-merge screenshot recording can refresh shared Gradle caches. `workflow_dispatch` remains available when you want to rerun screenshot recording on demand.
 
 It runs:
 
@@ -102,11 +116,13 @@ Use this workflow when:
 - you want downloadable screenshots from CI
 - Codex or a contributor needs visual artifacts while working on an issue
 
+This workflow skips itself cleanly when no wear or build-relevant files changed, so required checks stay green without paying screenshot-recording cost on unrelated PRs.
+
 ### Wear UI Tests
 
 File: `.github/workflows/wear-ui-tests.yml`
 
-This workflow now runs on pull requests so its `Run Instrumented Tests` job can be required by repository rulesets. It also runs on `push` to `main` so post-merge emulator runs can refresh shared Gradle caches. `workflow_dispatch` remains available when you want to rerun emulator validation on demand. It installs the Wear OS system image, creates an AVD, boots the emulator, waits for full boot, disables animations, and then runs instrumented tests.
+This workflow runs on ready-for-review pull requests, on `push` to `main`, and through `workflow_dispatch`. Draft pull requests skip this job intentionally so prototype-first UI work does not pay emulator startup cost too early. When it does run, it installs the Wear OS system image, creates an AVD, boots the emulator, waits for full boot, disables animations, and then runs instrumented tests.
 
 It runs:
 
@@ -126,15 +142,19 @@ Use this workflow when:
 - collecting instrumented test artifacts
 - validating fixes for issues that Codex or a developer is working on
 
+This workflow also skips itself cleanly when no wear or build-relevant files changed.
+
 ## Why the workflows are split
 
 The split follows Android CI best practices:
 
+- Keep draft PRs lightweight for screenshot-first prototyping.
 - Keep the main PR workflow fast and deterministic.
 - Run expensive emulator-based checks only when they are needed.
 - Always upload reports and artifacts so failures are inspectable after the run.
 - Use Gradle caching and a minimal SDK package set to reduce setup time.
 - Prefer daemon-backed Gradle invocations in CI so split steps in the same job can reuse a warm JVM instead of paying repeated startup cost.
+- Use job-level conditions inside workflows instead of path-filtered workflow skips so required checks can still report a successful conclusion.
 
 ## Local command mapping
 
@@ -145,7 +165,9 @@ The current workflows are based on the same commands that were already useful lo
 - `:wear:testDebugUnitTest -Proborazzi.test.verify=true`
 - `:wear:testDebugUnitTest -Proborazzi.test.record=true`
 
-CI adds a few more checks around them, especially `:mobile:assembleDebug`, `:wear:lintDebug`, artifact upload, and the emulator-backed run for `:wear:connectedDebugAndroidTest`.
+Draft PRs usually map closest to `:wear:assembleDebug` plus `:wear:testDebugUnitTest -Proborazzi.test.record=true`.
+
+Ready-for-review PRs add the heavier checks around them, especially `:mobile:assembleDebug`, `:wear:lintDebug`, artifact upload, and the emulator-backed run for `:wear:connectedDebugAndroidTest`.
 
 ## Manual runs
 
@@ -164,7 +186,7 @@ To use `gh workflow run`, the token used by `gh` needs repository `Actions` perm
 
 ## Current caveats
 
-As of March 22, 2026:
+As of March 27, 2026:
 
 - `Android CI` is passing.
 - `Wear Screenshot Record` is passing and uploads screenshot artifacts.

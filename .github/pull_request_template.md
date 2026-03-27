@@ -2,10 +2,6 @@
 
 - Describe the user-visible change.
 
-## Design Reference (Optional)
-
-- Figma frame link(s), if used:
-
 ## Wear Surfaces Touched
 
 - List the touched Wear surfaces using the shared `surface_state` naming where relevant.

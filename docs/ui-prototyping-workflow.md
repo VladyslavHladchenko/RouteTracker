@@ -14,7 +14,6 @@ The `mobile` module keeps building, but it is outside this workflow for now.
 
 Required for UI contributors:
 
-- Figma with access to the shared Wear design file
 - Android Studio Panda 2 `2025.3.2` or newer
 
 Recommended:
@@ -23,6 +22,7 @@ Recommended:
 
 Optional:
 
+- Figma for human-edited visual references or alternate design exploration
 - Wear OS emulator when hardware is unavailable
 
 Not used in this repo for screenshot baselines:
@@ -33,23 +33,23 @@ Roborazzi remains the only committed screenshot-baseline system.
 
 ## Required Flow
 
-1. Create or update the Figma frame before changing visible Wear UI.
-2. Build or update a previewable Wear surface from fake state first.
-3. Review the surface locally in Android Studio using:
+1. Build or update a previewable Wear surface from fake state first.
+2. Review the surface locally in Android Studio using:
    - Compose Preview
    - UI Check
    - Run Preview
    - Live Edit when motion or touch behavior matters
+3. Use Figma only when it adds value for human review or alternate design exploration.
 4. Update screenshot baselines and tests when the visual output changes.
 5. Open or update the PR with:
-   - exact Figma frame link
    - touched Wear surfaces
    - embedded screenshots for visual changes
    - validation performed
+   - exact Figma frame link when Figma was part of the review
 
 ## Surface Inventory
 
-Use one shared Figma file with frames for:
+Use the same shared surface inventory across previews, screenshots, and optional Figma frames:
 
 - `board`
 - `settings`
@@ -63,7 +63,7 @@ Use one shared Figma file with frames for:
 - `tile`
 - `complication`
 
-Frame names, preview functions, and screenshot files should use the same `surface_state` naming, for example:
+Preview functions and screenshot files should use the same `surface_state` naming. Optional Figma frames should match when used, for example:
 
 - `board_loading`
 - `quick_switch_empty`

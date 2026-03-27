@@ -2,9 +2,9 @@
 
 - Describe the user-visible change.
 
-## Figma
+## Design Reference (Optional)
 
-- Exact frame link(s):
+- Figma frame link(s), if used:
 
 ## Wear Surfaces Touched
 
